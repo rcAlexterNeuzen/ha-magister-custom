@@ -3,28 +3,36 @@
     "step": {
       "user": {
         "title": "Magister instellen",
-        "description": "Voer je Magister-inloggegevens in. De schoolnaam is het subdomein van je school (bijv. `ovozaanstad` voor ovozaanstad.magister.net). Spaties worden automatisch verwijderd. Het TOTP-geheim is optioneel en alleen nodig als je MFA hebt ingesteld.",
+        "description": "Voer je Magister-inloggegevens in. De schoolnaam is het subdomein (bijv. `ovozaanstad`). Het TOTP-geheim is optioneel — laat leeg als je de 6-cijferige code wilt invullen in de volgende stap.",
         "data": {
           "school": "Schoolnaam (subdomein)",
           "username": "Gebruikersnaam",
           "password": "Wachtwoord",
-          "totp_secret": "MFA TOTP-geheim (optioneel, base32)"
+          "totp_secret": "TOTP-geheim (optioneel, base32)"
+        }
+      },
+      "mfa": {
+        "title": "MFA-verificatie",
+        "description": "Je account heeft tweestapsverificatie. Open je authenticator-app en voer de huidige 6-cijferige code in. Doe dit snel – de code is 30 seconden geldig.",
+        "data": {
+          "mfa_code": "6-cijferige code uit je authenticator-app"
         }
       },
       "reauth_confirm": {
         "title": "Magister opnieuw inloggen",
-        "description": "Voer je nieuwe wachtwoord in om opnieuw in te loggen.",
+        "description": "Sessie verlopen voor {username} op {school}. Voer je wachtwoord opnieuw in. Als je MFA hebt, vul ook de 6-cijferige code in.",
         "data": {
           "password": "Wachtwoord",
-          "totp_secret": "MFA TOTP-geheim (optioneel)"
+          "totp_secret": "TOTP-geheim (optioneel, base32)",
+          "mfa_code": "6-cijferige MFA-code (optioneel)"
         }
       }
     },
     "error": {
-      "invalid_auth": "Ongeldige inloggegevens. Controleer gebruikersnaam en wachtwoord. Als je MFA hebt, controleer ook je TOTP-geheim (de base32-code uit de app-instelling, niet de 6-cijferige code).",
-      "totp_required": "MFA is vereist voor dit account. Voer je TOTP-geheim in (de base32-code die je bij het instellen van 2FA te zien kreeg).",
-      "totp_failed": "MFA-verificatie mislukt. Controleer je TOTP-geheim (base32-code). Zorg dat de systeemtijd van Home Assistant correct is.",
-      "cannot_connect": "Kan geen verbinding maken met Magister. Controleer je internetverbinding.",
+      "invalid_auth": "Ongeldige inloggegevens. Controleer je gebruikersnaam en wachtwoord.",
+      "totp_required": "MFA is vereist. Voer de 6-cijferige code in uit je authenticator-app.",
+      "totp_failed": "MFA-code geweigerd. Voer de code in zodra deze verschijnt (binnen 5 seconden) – hij is slechts 30 seconden geldig.",
+      "cannot_connect": "Kan geen verbinding maken met Magister. Controleer de schoolnaam en je internetverbinding.",
       "unknown": "Onbekende fout. Zie de logs voor meer informatie."
     },
     "abort": {
@@ -33,3 +41,4 @@
     }
   }
 }
+
