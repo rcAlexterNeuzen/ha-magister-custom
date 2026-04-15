@@ -25,6 +25,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .auth import MagisterAuthError, MagisterClient, MagisterTOTPRequired
 from .const import (
+    CONF_ACCESS_TOKEN,
     CONF_PASSWORD,
     CONF_SCHOOL,
     CONF_TOTP_SECRET,
@@ -198,6 +199,10 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
             password=entry.data[CONF_PASSWORD],
             totp_secret=entry.data.get(CONF_TOTP_SECRET) or None,
         )
+        # Inject a stored access token (obtained during config flow) so the
+        # coordinator does not need to re-authenticate on first data fetch.
+        if stored_token := entry.data.get(CONF_ACCESS_TOKEN):
+            self._client._access_token = stored_token
         # Dedicated session for authentication (needs its own cookie jar)
         self._auth_session: aiohttp.ClientSession | None = None
 
@@ -229,10 +234,13 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
             _LOGGER.debug("Token expired or missing – re-authenticating")
             try:
                 await self._client.authenticate(self._get_auth_session())
-            except MagisterTOTPRequired as err:
+            except MagisterTOTPRequired:
+                # No stored TOTP secret and token expired → user must re-auth manually
+                self.entry.async_start_reauth(self.hass)
                 raise UpdateFailed(
-                    "2FA is required: configure a TOTP secret in the integration settings"
-                ) from err
+                    "Magister session expired and MFA is required. "
+                    "Please re-authenticate the integration."
+                )
             except MagisterAuthError as err:
                 raise UpdateFailed(f"Magister authentication failed: {err}") from err
             try:

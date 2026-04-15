@@ -1,0 +1,105 @@
+title: Magister
+views:
+- title: Rooster & Cijfers
+  path: magister
+  icon: mdi:school
+  cards:
+  - type: glance
+    title: Vandaag
+    entities:
+    - entity: sensor.magister_lieke_neuzen_magister_lieke_neuzen
+      name: Lessen vandaag
+      icon: mdi:school
+    - entity: sensor.magister_lieke_neuzen_magister_lieke_neuzen_huiswerk
+      name: Huiswerk
+      icon: mdi:book-open-page-variant
+    - entity: >-
+        sensor.magister_lieke_neuzen_magister_lieke_neuzen_roosterwijzigingen
+      name: Wijzigingen
+      icon: mdi:calendar-alert
+    - entity: sensor.magister_lieke_neuzen_magister_lieke_neuzen_cijfers
+      name: Laatste cijfer
+      icon: mdi:school-outline
+  - type: markdown
+    title: Volgende les
+    content: >
+      {% set e = 'sensor.magister_lieke_neuzen_magister_lieke_neuzen_volgende_afspraak' %} {% if states(e) == 'Geen' %}
+        Geen komende lessen gevonden.
+      {% else %}
+        **{{ state_attr(e, 'subject') }}**
+        📍 {{ state_attr(e, 'location') | default('–') }}
+        🕐 {{ state_attr(e, 'start') }}  →  {{ state_attr(e, 'end') }}
+        📝 {{ state_attr(e, 'description') | default('') }}
+      {% endif %}
+  - type: markdown
+    title: Aankomend huiswerk (komende 14 dagen)
+    content: >
+      {% set hw = state_attr('sensor.magister_lieke_neuzen_magister_lieke_neuzen_huiswerk', 'huiswerk') %} {% set today = now().strftime('%Y-%m-%d') %} {% set deadline = (now() + timedelta(days=14)).strftime('%Y-%m-%d') %} {% if hw and hw | length > 0 %}
+        {% set upcoming = hw | selectattr('start', 'defined')
+                             | selectattr('start', 'ge', today)
+                             | selectattr('start', 'le', deadline)
+                             | sort(attribute='start') | list %}
+        {% if upcoming | length > 0 %}
+          {% for h in upcoming %}
+            📚 **{{ h.subject }}**
+            <br><small>📅 {{ h.start[:10] }}{% if h.description %} &bull; {{ h.description }}{% endif %}</small>
+
+          {% endfor %}
+        {% else %}
+          _Geen huiswerk de komende 14 dagen._ 🎉
+        {% endif %}
+      {% else %}
+        _Geen huiswerk gevonden._ 🎉
+      {% endif %}
+  - type: markdown
+    title: Cijfers afgelopen week
+    content: >
+      {% set cijfers = state_attr('sensor.magister_lieke_neuzen_magister_lieke_neuzen_cijfers', 'cijfers') %} {% set week_ago = (now() - timedelta(days=7)).strftime('%Y-%m-%d') %} {% if cijfers %}
+        {% set recent = cijfers | selectattr('entered_on', 'defined') | selectattr('entered_on', 'ge', week_ago) | list %}
+        {% if recent | length > 0 %}
+          {% for g in recent | sort(attribute='entered_on', reverse=true) %}
+            {% set cijfer = g.value | float(-1) %}
+            {% if cijfer >= 5.5 %}🟢{% elif cijfer >= 1 %}🔴{% else %}📝{% endif %}
+            &nbsp;**{{ g.subject }}** &mdash; <ha-icon icon="mdi:school-outline"></ha-icon> **{{ g.value }}**
+            {% if g.weight %}&nbsp;<small>_(weging {{ g.weight }})_</small>{% endif %}
+            <br><small>{{ g.description | default('') }}{% if g.description and g.entered_on %} &bull; {% endif %}{{ g.entered_on[:10] if g.entered_on else '' }}</small>
+
+          {% endfor %}
+        {% else %}
+          _Geen cijfers de afgelopen week._
+        {% endif %}
+      {% else %}
+        _Geen cijfers beschikbaar._
+      {% endif %}
+  - type: markdown
+    title: Recente cijfers (laatste 10)
+    content: >
+      {% set cijfers = state_attr('sensor.magister_lieke_neuzen_magister_lieke_neuzen_cijfers', 'cijfers') %} {% if cijfers and cijfers | length > 0 %}
+        {% for g in cijfers %}
+          {% set cijfer = g.value | float(-1) %}
+          {% if cijfer >= 5.5 %}🟢{% elif cijfer >= 1 %}🔴{% else %}📝{% endif %}
+          &nbsp;**{{ g.subject }}** &mdash; **{{ g.value }}**
+          {% if g.weight %}&nbsp;<small>_(weging {{ g.weight }})_</small>{% endif %}
+          <br><small>{{ g.description | default('') }}{% if g.description and g.entered_on %} &bull; {% endif %}{{ g.entered_on[:10] if g.entered_on else '' }}</small>
+
+        {% endfor %}
+      {% else %}
+        _Geen cijfers beschikbaar._
+      {% endif %}
+  - type: markdown
+    title: Roosterwijzigingen
+    content: >
+      {% set wijzigingen = state_attr('sensor.magister_lieke_neuzen_magister_lieke_neuzen_roosterwijzigingen', 'wijzigingen') %} {% if wijzigingen and wijzigingen | length > 0 %}
+        {% for w in wijzigingen | sort(attribute='start') %}
+          ⚠️ **{{ w.subject }}**
+          <br><small>📅 {{ w.start[:10] if w.start else '–' }}{% if w.location %} &bull; 📍 {{ w.location }}{% endif %}{% if w.description %} &bull; {{ w.description }}{% endif %}</small>
+
+        {% endfor %}
+      {% else %}
+        _Geen roosterwijzigingen._ ✅
+      {% endif %}
+  - initial_view: dayGridDay
+    type: calendar
+    title: Rooster
+    entities:
+    - calendar.magister_lieke_neuzen_magister_lieke_neuzen_rooster

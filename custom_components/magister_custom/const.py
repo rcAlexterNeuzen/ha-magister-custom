@@ -7,6 +7,7 @@ CONF_SCHOOL = "school"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONF_TOTP_SECRET = "totp_secret"
+CONF_ACCESS_TOKEN = "access_token"
 
 # Magister API
 MAGISTER_ACCOUNTS_HOST = "accounts.magister.net"
