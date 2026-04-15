@@ -16,6 +16,269 @@ from .const import CONF_PASSWORD, CONF_SCHOOL, CONF_TOTP_SECRET, CONF_USERNAME, 
 
 _LOGGER = logging.getLogger(__name__)
 
+CONF_MFA_CODE = "mfa_code"
+
+_STEP_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_SCHOOL): str,
+        vol.Required(CONF_USERNAME): str,
+        vol.Required(CONF_PASSWORD): str,
+        vol.Optional(CONF_TOTP_SECRET, default=""): str,
+    }
+)
+
+
+def _sanitize_school(raw: str) -> str:
+    """Normalise user input to a bare Magister subdomain."""
+    s = raw.strip().lower()
+    s = re.sub(r"^https?://", "", s)
+    m = re.match(r"([^./]+)\.magister\.net.*", s)
+    if m:
+        s = m.group(1)
+    s = s.replace(" ", "")
+    return s
+
+
+async def _do_auth(
+    school: str,
+    username: str,
+    password: str,
+    totp_secret: str | None,
+    one_time_code: str | None = None,
+) -> None:
+    """Run authentication; raise ValueError with an error key on failure."""
+    client = MagisterClient(
+        school=school,
+        username=username,
+        password=password,
+        totp_secret=totp_secret or None,
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            await client.authenticate(session, one_time_code=one_time_code)
+    except MagisterTOTPRequired:
+        raise ValueError("totp_required")
+    except MagisterTOTPFailed:
+        raise ValueError("totp_failed")
+    except MagisterAuthError:
+        raise ValueError("invalid_auth")
+    except (aiohttp.ClientError, OSError):
+        raise ValueError("cannot_connect")
+    except Exception as err:
+        _LOGGER.debug("Unexpected error in _do_auth: %s", err)
+        raise ValueError("cannot_connect") from err
+
+
+class MagisterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Magister."""
+
+    VERSION = 1
+
+    def __init__(self) -> None:
+        self._pending: dict = {}  # stores credentials while waiting for MFA code
+
+    # ------------------------------------------------------------------
+    # Step 1 – credentials
+    # ------------------------------------------------------------------
+
+    async def async_step_user(
+        self, user_input: dict | None = None
+    ) -> FlowResult:
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            school = _sanitize_school(user_input[CONF_SCHOOL])
+            username = user_input[CONF_USERNAME].strip()
+            password = user_input[CONF_PASSWORD]
+            totp_secret = (user_input.get(CONF_TOTP_SECRET) or "").strip() or None
+
+            try:
+                await _do_auth(school, username, password, totp_secret)
+            except ValueError as err:
+                key = str(err)
+                if key == "totp_required":
+                    # Save credentials and move to MFA step
+                    self._pending = {
+                        CONF_SCHOOL: school,
+                        CONF_USERNAME: username,
+                        CONF_PASSWORD: password,
+                        CONF_TOTP_SECRET: totp_secret,
+                    }
+                    return await self.async_step_mfa()
+                errors["base"] = key
+            except Exception:
+                _LOGGER.exception("Unexpected error during Magister validation")
+                errors["base"] = "unknown"
+            else:
+                await self.async_set_unique_id(f"{school}_{username}")
+                self._abort_if_unique_id_configured()
+                return self._create_entry(school, username, password, totp_secret)
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=_STEP_SCHEMA,
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------
+    # Step 2 – MFA one-time code (only reached when MFA is required)
+    # ------------------------------------------------------------------
+
+    async def async_step_mfa(
+        self, user_input: dict | None = None
+    ) -> FlowResult:
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            code = (user_input.get(CONF_MFA_CODE) or "").strip()
+            p = self._pending
+
+            try:
+                await _do_auth(
+                    p[CONF_SCHOOL],
+                    p[CONF_USERNAME],
+                    p[CONF_PASSWORD],
+                    p.get(CONF_TOTP_SECRET),
+                    one_time_code=code or None,
+                )
+            except ValueError as err:
+                errors["base"] = str(err)
+            except Exception:
+                _LOGGER.exception("Unexpected error during Magister MFA step")
+                errors["base"] = "unknown"
+            else:
+                await self.async_set_unique_id(
+                    f"{p[CONF_SCHOOL]}_{p[CONF_USERNAME]}"
+                )
+                self._abort_if_unique_id_configured()
+                return self._create_entry(
+                    p[CONF_SCHOOL],
+                    p[CONF_USERNAME],
+                    p[CONF_PASSWORD],
+                    p.get(CONF_TOTP_SECRET),
+                )
+
+        return self.async_show_form(
+            step_id="mfa",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_MFA_CODE): str}
+            ),
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------
+    # Re-auth
+    # ------------------------------------------------------------------
+
+    async def async_step_reauth(self, entry_data: dict | None = None) -> FlowResult:
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict | None = None
+    ) -> FlowResult:
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            new_password = user_input[CONF_PASSWORD]
+            totp_secret = (
+                user_input.get(CONF_TOTP_SECRET)
+                or entry.data.get(CONF_TOTP_SECRET)
+                or ""
+            ).strip() or None
+            mfa_code = (user_input.get(CONF_MFA_CODE) or "").strip() or None
+
+            try:
+                await _do_auth(
+                    entry.data[CONF_SCHOOL],
+                    entry.data[CONF_USERNAME],
+                    new_password,
+                    totp_secret,
+                    one_time_code=mfa_code,
+                )
+            except ValueError as err:
+                errors["base"] = str(err)
+            except Exception:
+                _LOGGER.exception("Unexpected error during Magister reauth")
+                errors["base"] = "unknown"
+            else:
+                new_data = {**entry.data, CONF_PASSWORD: new_password}
+                if totp_secret:
+                    new_data[CONF_TOTP_SECRET] = totp_secret
+                self.hass.config_entries.async_update_entry(entry, data=new_data)
+                await self.hass.config_entries.async_reload(entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_PASSWORD): str,
+                    vol.Optional(CONF_TOTP_SECRET, default=""): str,
+                    vol.Optional(CONF_MFA_CODE, default=""): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "username": entry.data.get(CONF_USERNAME, ""),
+                "school": entry.data.get(CONF_SCHOOL, ""),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _create_entry(
+        self,
+        school: str,
+        username: str,
+        password: str,
+        totp_secret: str | None,
+    ) -> FlowResult:
+        # Note: async_set_unique_id must be awaited, so callers that reach here
+        # have already passed validation; unique_id collision is handled below.
+        return self.async_create_entry(
+            title=f"Magister – {school}",
+            data={
+                CONF_SCHOOL: school,
+                CONF_USERNAME: username,
+                CONF_PASSWORD: password,
+                CONF_TOTP_SECRET: totp_secret,
+            },
+        )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> MagisterOptionsFlow:
+        return MagisterOptionsFlow(config_entry)
+
+
+class MagisterOptionsFlow(config_entries.OptionsFlow):
+    """Options flow: only exposes the poll interval."""
+
+    def __init__(self, entry: config_entries.ConfigEntry) -> None:
+        self._entry = entry
+
+    async def async_step_init(self, user_input: dict | None = None) -> FlowResult:
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        "poll_interval",
+                        default=self._entry.options.get("poll_interval", 15),
+                    ): vol.All(int, vol.Range(min=5, max=1440)),
+                }
+            ),
+        )
+
+
+_LOGGER = logging.getLogger(__name__)
+
 _STEP_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_SCHOOL): str,
