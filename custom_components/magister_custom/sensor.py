@@ -12,6 +12,7 @@ Per student the following sensors are created:
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
@@ -132,6 +133,11 @@ class MagisterOverviewSensor(_MagisterBaseSensor):
             return {}
 
         next_apt = s.next_appointment
+        today_str = date.today().isoformat()
+        uitval_vandaag = [
+            a.as_dict() for a in s.appointments
+            if a.is_cancelled and a.start and a.start.date().isoformat() == today_str
+        ]
         attrs: dict[str, Any] = {
             "naam": s.name,
             "afspraken_vandaag": s.appointments_today,
@@ -139,6 +145,7 @@ class MagisterOverviewSensor(_MagisterBaseSensor):
             "roosterwijzigingen": len(s.schedule_changes),
             "volgende_afspraak": _fmt_appointment(next_apt),
             "laatste_cijfer": s.grades[0].value if s.grades else "–",
+            "uitval_vandaag": uitval_vandaag,
         }
         if next_apt:
             attrs["volgende_vak"] = next_apt.subject
