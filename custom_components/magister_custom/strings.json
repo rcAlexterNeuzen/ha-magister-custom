@@ -1,0 +1,34 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Magister instellen",
+        "description": "Voer je Magister-inloggegevens in. De schoolnaam is het subdomein van je school (bijv. `ovozaanstad` voor ovozaanstad.magister.net). Spaties worden automatisch verwijderd. Het TOTP-geheim is optioneel en alleen nodig als je MFA hebt ingesteld.",
+        "data": {
+          "school": "Schoolnaam (subdomein)",
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord",
+          "totp_secret": "MFA TOTP-geheim (optioneel, base32)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Magister opnieuw inloggen",
+        "description": "Voer je nieuwe wachtwoord in om opnieuw in te loggen.",
+        "data": {
+          "password": "Wachtwoord",
+          "totp_secret": "MFA TOTP-geheim (optioneel)"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Ongeldige inloggegevens. Controleer schoolnaam, gebruikersnaam en wachtwoord.",
+      "totp_required": "MFA is vereist. Voer je TOTP-geheim in.",
+      "cannot_connect": "Kan geen verbinding maken met Magister. Controleer je internetverbinding.",
+      "unknown": "Onbekende fout. Zie de logs voor meer informatie."
+    },
+    "abort": {
+      "already_configured": "Dit Magister-account is al ingesteld.",
+      "reauth_successful": "Opnieuw inloggen geslaagd."
+    }
+  }
+}

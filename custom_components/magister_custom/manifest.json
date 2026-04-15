@@ -1,0 +1,11 @@
+{
+  "domain": "magister_custom",
+  "name": "Magister",
+  "documentation": "https://github.com/yourusername/ha-magister-custom",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": [],
+  "version": "1.0.0",
+  "iot_class": "cloud_polling",
+  "config_flow": true
+}
