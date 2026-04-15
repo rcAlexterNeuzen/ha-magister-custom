@@ -127,6 +127,10 @@ class MagisterTOTPRequired(MagisterAuthError):
     """Raised when 2FA is required but no TOTP secret was provided."""
 
 
+class MagisterTOTPFailed(MagisterAuthError):
+    """Raised when the TOTP/softtoken challenge itself is rejected."""
+
+
 # ---------------------------------------------------------------------------
 # Main client
 # ---------------------------------------------------------------------------
@@ -210,23 +214,37 @@ class MagisterClient:
         # 3. Start auth session – follows redirects, sets XSRF-TOKEN cookie,
         #    lands on the challenge page whose URL has ?sessionId=...&returnUrl=...
         auth_url = auth_endpoint + "?" + urllib.parse.urlencode(params)
+        _LOGGER.debug("[Magister auth] step 3: fetching auth URL for %s", self.school_host)
         session_url, html = await self._follow_get(session, auth_url)
+        _LOGGER.debug("[Magister auth] step 3: session URL = %s", session_url)
 
         # Extract XSRF token from cookie jar
+        # filter_cookies returns SimpleCookie; values may be Morsel or str depending on version
         xsrf_token = ""
-        cookies = session.cookie_jar.filter_cookies(URL(accounts_url))
-        if xsrf_cookie := cookies.get("XSRF-TOKEN"):
-            xsrf_token = xsrf_cookie.value
+        try:
+            cookies = session.cookie_jar.filter_cookies(URL(accounts_url))
+            raw = cookies.get("XSRF-TOKEN")
+            if raw is not None:
+                xsrf_token = raw.value if hasattr(raw, "value") else str(raw)
+        except Exception as err:
+            _LOGGER.debug("[Magister auth] Could not read XSRF-TOKEN cookie: %s", err)
+        _LOGGER.debug("[Magister auth] XSRF token present: %s", bool(xsrf_token))
 
         # Extract sessionId + returnUrl from the challenge page URL
         parsed = urllib.parse.urlparse(session_url)
         qs = urllib.parse.parse_qs(parsed.query)
         session_id = (qs.get("sessionId") or [None])[0]
         return_url = (qs.get("returnUrl") or [None])[0]
+        _LOGGER.debug(
+            "[Magister auth] sessionId=%s returnUrl=%s",
+            bool(session_id),
+            bool(return_url),
+        )
 
         if not session_id:
             raise MagisterAuthError(
-                f"Could not extract sessionId from URL: {session_url}"
+                f"Could not extract sessionId from URL: {session_url!r}. "
+                "The school may use SSO/SAML which requires browser login."
             )
 
         # 4. Extract authCode from account-XXXXX.js
@@ -236,6 +254,7 @@ class MagisterClient:
             try:
                 js_bytes = await self._get_bytes(session, account_js_url)
                 authcode = _extract_authcode(js_bytes.decode("utf-8", errors="replace"))
+                _LOGGER.debug("[Magister auth] authcode extracted from account.js")
             except Exception as err:
                 _LOGGER.warning("Failed to load account.js (%s); using default authcode", err)
 
@@ -251,20 +270,34 @@ class MagisterClient:
         }
 
         # 5a. current
+        _LOGGER.debug("[Magister auth] step 5a: challenges/current")
         await self._post_json(
             session, f"{accounts_url}/challenges/current", payload, extra_headers
         )
 
         # 5b. username
+        _LOGGER.debug("[Magister auth] step 5b: challenges/username")
         payload["username"] = self.username
-        await self._post_json(
+        r_user = await self._post_json(
             session, f"{accounts_url}/challenges/username", payload, extra_headers
         )
+        if r_user.get("error"):
+            raise MagisterAuthError(
+                f"Username challenge error: {r_user['error']}. "
+                "Check your username (some schools use email address format)."
+            )
 
         # 5c. password
+        _LOGGER.debug("[Magister auth] step 5c: challenges/password")
         payload["password"] = self.password
         r = await self._post_json(
             session, f"{accounts_url}/challenges/password", payload, extra_headers
+        )
+        _LOGGER.debug(
+            "[Magister auth] password response: redirectURL=%s action=%s error=%s",
+            bool(r.get("redirectURL")),
+            r.get("action"),
+            r.get("error"),
         )
 
         if r.get("error"):
@@ -273,6 +306,7 @@ class MagisterClient:
         # 5d. Optional 2FA challenge
         if not r.get("redirectURL"):
             action = r.get("action", "")
+            _LOGGER.debug("[Magister auth] step 5d: 2FA action=%r", action)
             if action in ("totp", "softtoken"):
                 r = await self._handle_mfa(
                     session, action, payload, extra_headers, accounts_url
@@ -342,7 +376,7 @@ class MagisterClient:
             session, f"{accounts_url}/challenges/{endpoint}", otp_payload, headers
         )
         if not r.get("redirectURL") or r.get("error"):
-            raise MagisterAuthError(
+            raise MagisterTOTPFailed(
                 f"2FA challenge failed (action={action}): {r.get('error', 'no redirectURL')}"
             )
         return r

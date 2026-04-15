@@ -21,8 +21,9 @@
       }
     },
     "error": {
-      "invalid_auth": "Ongeldige inloggegevens. Controleer schoolnaam, gebruikersnaam en wachtwoord.",
-      "totp_required": "MFA is vereist. Voer je TOTP-geheim in.",
+      "invalid_auth": "Ongeldige inloggegevens. Controleer gebruikersnaam en wachtwoord. Als je MFA hebt, controleer ook je TOTP-geheim (de base32-code uit de app-instelling, niet de 6-cijferige code).",
+      "totp_required": "MFA is vereist voor dit account. Voer je TOTP-geheim in (de base32-code die je bij het instellen van 2FA te zien kreeg).",
+      "totp_failed": "MFA-verificatie mislukt. Controleer je TOTP-geheim (base32-code). Zorg dat de systeemtijd van Home Assistant correct is.",
       "cannot_connect": "Kan geen verbinding maken met Magister. Controleer je internetverbinding.",
       "unknown": "Onbekende fout. Zie de logs voor meer informatie."
     },

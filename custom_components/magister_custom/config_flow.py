@@ -11,7 +11,7 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 
-from .auth import MagisterAuthError, MagisterClient, MagisterTOTPRequired
+from .auth import MagisterAuthError, MagisterClient, MagisterTOTPFailed, MagisterTOTPRequired
 from .const import CONF_PASSWORD, CONF_SCHOOL, CONF_TOTP_SECRET, CONF_USERNAME, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -60,6 +60,8 @@ async def _validate(school: str, username: str, password: str, totp_secret: str 
             await client.authenticate(session)
     except MagisterTOTPRequired:
         raise ValueError("totp_required")
+    except MagisterTOTPFailed:
+        raise ValueError("totp_failed")
     except MagisterAuthError:
         raise ValueError("invalid_auth")
     except (aiohttp.ClientError, OSError):
