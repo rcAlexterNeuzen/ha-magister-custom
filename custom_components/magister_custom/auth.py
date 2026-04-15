@@ -39,16 +39,20 @@ _DEFAULT_AUTHCODE = "00000000000000000000000000000000"
 # TOTP helpers
 # ---------------------------------------------------------------------------
 
-def _generate_totp(secret: str, digits: int = 6, period: int = 30) -> str:
-    """Generate a TOTP OTP from a base32-encoded secret (RFC 6238 / HOTP)."""
+def _generate_totp(secret: str, digits: int = 6, period: int = 30, offset: int = 0) -> str:
+    """Generate a TOTP OTP from a base32-encoded secret (RFC 6238 / HOTP).
+
+    `offset` shifts the counter by that many periods (e.g. -1 for the previous
+    30-second window) which is useful for handling minor clock skew.
+    """
     clean = secret.upper().replace(" ", "").replace("-", "").rstrip("=")
     clean = "".join(c for c in clean if c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")
     padding = (8 - len(clean) % 8) % 8
     key = base64.b32decode(clean + "=" * padding, casefold=True)
-    counter = struct.pack(">Q", int(time.time()) // period)
+    counter = struct.pack(">Q", int(time.time()) // period + offset)
     digest = hmac.new(key, counter, hashlib.sha1).digest()
-    offset = digest[-1] & 0x0F
-    code = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
+    offset_byte = digest[-1] & 0x0F
+    code = struct.unpack(">I", digest[offset_byte : offset_byte + 4])[0] & 0x7FFFFFFF
     return str(code % (10**digits)).zfill(digits)
 
 
@@ -177,8 +181,16 @@ class MagisterClient:
         self._access_token = None
         self._token_expires = None
 
-    async def authenticate(self, session: aiohttp.ClientSession) -> None:
+    async def authenticate(
+        self,
+        session: aiohttp.ClientSession,
+        one_time_code: str | None = None,
+    ) -> None:
         """Run the full Magister OIDC challenge flow.
+
+        `one_time_code` is the current 6-digit code from the user's authenticator
+        app.  It is used instead of computing TOTP from a stored secret, which
+        is useful when the user cannot retrieve their base32 seed.
 
         `session` must have its own CookieJar so that the XSRF cookie is
         captured.  Create a dedicated session for authentication:
@@ -309,7 +321,8 @@ class MagisterClient:
             _LOGGER.debug("[Magister auth] step 5d: 2FA action=%r", action)
             if action in ("totp", "softtoken"):
                 r = await self._handle_mfa(
-                    session, action, payload, extra_headers, accounts_url
+                    session, action, payload, extra_headers, accounts_url,
+                    one_time_code=one_time_code,
                 )
             else:
                 raise MagisterAuthError(
@@ -358,28 +371,69 @@ class MagisterClient:
         payload: dict,
         headers: dict,
         accounts_url: str,
+        one_time_code: str | None = None,
     ) -> dict:
-        """Submit TOTP / soft-token challenge and return the response."""
+        """Submit TOTP / soft-token challenge and return the response.
+
+        Priority:
+          1. `one_time_code` – a fresh 6-digit code entered by the user right now
+          2. `self.totp_secret` – base32 seed for automatic TOTP generation
+        """
+        if action == "softtoken":
+            field, endpoint = "code", "soft-token"
+        else:
+            field, endpoint = "otp", action  # "totp"
+
+        # --- path 1: user supplied a live 6-digit code ---
+        if one_time_code:
+            code = one_time_code.strip().replace(" ", "")
+            _LOGGER.debug(
+                "[Magister auth] submitting one-time code for %s challenge", action
+            )
+            r = await self._post_json(
+                session,
+                f"{accounts_url}/challenges/{endpoint}",
+                {**payload, field: code},
+                headers,
+            )
+            if r.get("redirectURL") and not r.get("error"):
+                return r
+            raise MagisterTOTPFailed(
+                f"One-time code rejected by Magister (action={action}): "
+                f"{r.get('error', 'no redirectURL')}. "
+                "Make sure you enter the code immediately before it rotates (every 30 s)."
+            )
+
+        # --- path 2: compute TOTP from stored secret ---
         if not self.totp_secret:
             raise MagisterTOTPRequired(
-                f"2FA ({action}) is required but no TOTP secret is configured"
+                f"2FA ({action}) is required but no TOTP secret or one-time code was provided"
             )
-        otp = _generate_totp(self.totp_secret)
-        otp_payload = dict(payload)
-        if action == "softtoken":
-            otp_payload["code"] = otp
-            endpoint = "soft-token"
-        else:
-            otp_payload["otp"] = otp
-            endpoint = action  # "totp"
-        r = await self._post_json(
-            session, f"{accounts_url}/challenges/{endpoint}", otp_payload, headers
+
+        # Try current period first, then ±1 period to tolerate minor clock skew
+        last_error: str = "no redirectURL"
+        for drift in (0, -1, 1):
+            otp = _generate_totp(self.totp_secret, offset=drift)
+            otp_payload = {**payload, field: otp}
+            _LOGGER.debug(
+                "[Magister auth] trying %s challenge with drift=%d code=%s",
+                action, drift, otp,
+            )
+            r = await self._post_json(
+                session, f"{accounts_url}/challenges/{endpoint}", otp_payload, headers
+            )
+            if r.get("redirectURL") and not r.get("error"):
+                _LOGGER.debug("[Magister auth] %s succeeded with drift=%d", action, drift)
+                return r
+            last_error = r.get("error") or "no redirectURL"
+            _LOGGER.debug(
+                "[Magister auth] %s drift=%d failed: %s", action, drift, last_error
+            )
+
+        raise MagisterTOTPFailed(
+            f"2FA challenge failed (action={action}) after trying ±1 period: {last_error}. "
+            "Check your TOTP secret (base32 seed from app setup, not the 6-digit code)."
         )
-        if not r.get("redirectURL") or r.get("error"):
-            raise MagisterTOTPFailed(
-                f"2FA challenge failed (action={action}): {r.get('error', 'no redirectURL')}"
-            )
-        return r
 
     async def _extract_token(
         self, session: aiohttp.ClientSession, url: str
