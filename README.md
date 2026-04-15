@@ -12,7 +12,7 @@ Werkt met **ouder- én leerlingaccounts** en ondersteunt **MFA (tweestapsverific
 
 | Entity | Status | Attributen |
 |--------|--------|------------|
-| `sensor.magister_<naam>` | Aantal lessen vandaag | Naam, lessen vandaag, huiswerk, wijzigingen, laatste cijfer, volgende afspraak |
+| `sensor.magister_<naam>` | Aantal lessen vandaag | Naam, lessen vandaag, huiswerk, wijzigingen, laatste cijfer, volgende afspraak, **uitval_vandaag** (lijst van uitgevallen lessen vandaag) |
 | `sensor.magister_<naam>_next_appointment` | Datum/tijd volgende les | Vak, locatie, type, start, einde |
 | `sensor.magister_<naam>_grades` | Meest recente cijfer | Laatste 10 cijfers met vak, omschrijving, weging en datum |
 | `sensor.magister_<naam>_homework` | Aantal huiswerkopdrachten | Lijst van huiswerk (vak, start, omschrijving) |
@@ -98,88 +98,65 @@ Bij een **leerlingaccount** worden entiteiten aangemaakt voor de ingelogde leerl
 
 ---
 
-## Automatiseringen
+## Meegeleverde bestanden
 
-### Melding bij nieuw cijfer
-
-```yaml
-automation:
-  - alias: "Nieuw Magister-cijfer"
-    trigger:
-      - platform: state
-        entity_id: sensor.magister_jan_grades
-    condition:
-      - condition: template
-        value_template: "{{ trigger.to_state.state != trigger.from_state.state }}"
-    action:
-      - service: notify.mobile_app_telefoon
-        data:
-          title: "Nieuw cijfer voor {{ state_attr('sensor.magister_jan_grades', 'cijfers')[0].subject }}"
-          message: "{{ states('sensor.magister_jan_grades') }}"
-```
-
-### Herinnering bij huiswerk
-
-```yaml
-automation:
-  - alias: "Huiswerk herinnering"
-    trigger:
-      - platform: time
-        at: "18:00:00"
-    condition:
-      - condition: numeric_state
-        entity_id: sensor.magister_jan_homework
-        above: 0
-    action:
-      - service: notify.mobile_app_telefoon
-        data:
-          message: >
-            Nog {{ states('sensor.magister_jan_homework') }} huiswerk items.
-            Eerst: {{ state_attr('sensor.magister_jan_homework', 'huiswerk')[0].subject }}
-```
-
-### Melding bij uitval
-
-```yaml
-automation:
-  - alias: "Roosterwijziging Magister"
-    trigger:
-      - platform: state
-        entity_id: sensor.magister_jan_schedule_changes
-    condition:
-      - condition: numeric_state
-        entity_id: sensor.magister_jan_schedule_changes
-        above: 0
-    action:
-      - service: notify.mobile_app_telefoon
-        data:
-          message: "Er is een roosterwijziging voor Jan."
-```
+| Bestand | Beschrijving |
+|---------|-------------|
+| `custom_components/magister_custom/` | De integratie zelf |
+| `lovelace_dashboard.yaml` | Kant-en-klaar Lovelace dashboard |
+| `ha-automations/magister_notifications.yaml` | Notificatie-automatiseringen |
 
 ---
 
-## Lovelace-kaart
+## Automatiseringen
 
-Voeg snel het rooster toe aan je dashboard:
+De automatiseringen staan kant-en-klaar in `ha-automations/magister_notifications.yaml`.
+
+### Beschikbare automatiseringen
+
+| Automatisering | Trigger | Beschrijving |
+|---|---|---|
+| **Nieuw cijfer** | State change grades sensor | Melding met cijfer, vak, weging en omschrijving. Groen 🟢 bij voldoende, rood 🔴 bij onvoldoende. |
+| **Uitval in roosterwijzigingen** | State change schedule_changes sensor | Melding wanneer een wijziging "uitval" bevat in vak of omschrijving. |
+| **Ochtendscheck uitval 08:00** | Tijdtrigger 08:00 | Controleert of een les vanaf 08:30 als uitgevallen is gemarkeerd (`uitval_vandaag` attribuut). |
+
+### Installeren
+
+Voeg toe aan `configuration.yaml`:
 
 ```yaml
-type: calendar
-entities:
-  - calendar.magister_jan_rooster
+automation: !include_dir_merge_list automations/
 ```
 
-Cijfers en huiswerk als entiteitenkaart:
+Kopieer vervolgens `ha-automations/magister_notifications.yaml` naar je `automations/` map.
 
-```yaml
-type: entities
-title: Magister Jan
-entities:
-  - sensor.magister_jan
-  - sensor.magister_jan_next_appointment
-  - sensor.magister_jan_grades
-  - sensor.magister_jan_homework
-  - sensor.magister_jan_schedule_changes
-```
+Of plak de inhoud rechtstreeks in je bestaande `automations.yaml`.
+
+> De automatiseringen gebruiken `notify.mobile_app_iphone16plus` — pas dit aan naar je eigen notify-service.
+
+---
+
+## Lovelace dashboard
+
+Het bestand `lovelace_dashboard.yaml` bevat een kant-en-klaar dashboard met de volgende kaarten:
+
+| Kaart | Inhoud |
+|-------|--------|
+| **Vandaag** | Lessen, huiswerkaantal, wijzigingen, laatste cijfer |
+| **Volgende les** | Vak, locatie, tijdstip |
+| **Aankomend huiswerk** | Huiswerk de komende 14 dagen, gesorteerd op datum |
+| **Cijfers afgelopen week** | Cijfers van de laatste 7 dagen met 🟢/🔴 indicator |
+| **Recente cijfers (laatste 10)** | Overzicht van de 10 meest recente cijfers |
+| **Roosterwijzigingen** | Uitval en wijzigingen |
+| **Roosterkalender** | HA kalenderweergave |
+
+### Toevoegen aan Home Assistant
+
+1. Ga naar **Instellingen → Dashboards → Dashboard toevoegen**
+2. Kies **Leeg dashboard** en open het in YAML-modus (drie puntjes → YAML bewerken)
+3. Plak de inhoud van `lovelace_dashboard.yaml`
+
+> De entiteitnamen in het dashboard zijn afgestemd op de leerling `lieke_neuzen`. Pas de slug aan als je een andere leerling gebruikt.
 
 ---
 
