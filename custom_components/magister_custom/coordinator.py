@@ -231,11 +231,36 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
         try:
             return await self._fetch_all()
         except MagisterAuthError:
-            _LOGGER.debug("Token expired or missing – re-authenticating")
+            _LOGGER.debug("Token expired or missing – attempting re-authentication")
+            auth_session = self._get_auth_session()
+
+            # 1. Try silent re-auth first (reuses existing server-side OIDC session).
+            #    This works without MFA as long as the server session is still valid,
+            #    which is typically much longer than the access token lifetime.
+            if await self._client.try_silent_reauthenticate(auth_session):
+                _LOGGER.debug("Silent re-auth succeeded – no MFA needed")
+                try:
+                    return await self._fetch_all()
+                except Exception as err:
+                    raise UpdateFailed(f"Data fetch failed after silent re-auth: {err}") from err
+
+            # 2. Silent auth failed (server session expired) – try full challenge flow.
+            #    Use a FRESH session to avoid cookie contamination from the failed
+            #    silent re-auth attempt (partial redirects may have modified cookie state).
+            _LOGGER.debug("Silent re-auth failed – trying full challenge flow with fresh session")
+            if self._auth_session and not self._auth_session.closed:
+                await self._auth_session.close()
+            self._auth_session = None
+            fresh_session = self._get_auth_session()
             try:
-                await self._client.authenticate(self._get_auth_session())
+                await self._client.authenticate(fresh_session)
             except MagisterTOTPRequired:
-                # No stored TOTP secret and token expired → user must re-auth manually
+                # No stored TOTP secret → user must re-authenticate via HA UI
+                _LOGGER.warning(
+                    "Magister session fully expired and no TOTP secret stored. "
+                    "Triggering re-auth. Provide a base32 TOTP secret in the "
+                    "integration settings to avoid this."
+                )
                 self.entry.async_start_reauth(self.hass)
                 raise UpdateFailed(
                     "Magister session expired and MFA is required. "

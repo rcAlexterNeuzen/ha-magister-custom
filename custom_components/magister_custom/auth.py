@@ -181,6 +181,93 @@ class MagisterClient:
         self._access_token = None
         self._token_expires = None
 
+    async def try_silent_reauthenticate(
+        self,
+        session: aiohttp.ClientSession,
+    ) -> bool:
+        """Attempt a silent token refresh using existing session cookies.
+
+        When the server-side OIDC session is still valid (typically several
+        hours after the last authentication), the authorization endpoint
+        immediately redirects back with a fresh access_token without going
+        through any challenge steps.  This avoids the need for MFA on every
+        token expiry.
+
+        Returns True if a new token was obtained, False if the server requires
+        a full interactive login (challenge page shown).
+        """
+        try:
+            accounts_url = f"https://{_ACCOUNTS_HOST}"
+            school_url = f"https://{self.school_host}"
+
+            openid_cfg: dict = await self._get_json(
+                session, f"{accounts_url}/.well-known/openid-configuration"
+            )
+            auth_endpoint: str = openid_cfg["authorization_endpoint"]
+
+            raw_js = await self._get_bytes(session, f"{school_url}/oidc_config.js")
+            oidc_cfg = _extract_oidc_config(
+                raw_js.decode("utf-8", errors="replace"), self.school_host
+            )
+
+            params = {
+                "client_id": oidc_cfg.get("client_id", ""),
+                "redirect_uri": oidc_cfg.get("redirect_uri", ""),
+                "response_type": oidc_cfg.get("response_type", "token id_token"),
+                "scope": "openid profile",
+                "state": "11111111111111111111111111111111",
+                "nonce": "11111111111111111111111111111111",
+                "acr_values": oidc_cfg.get("acr_values", ""),
+                "prompt": "none",  # hint to skip interactive login if session active
+            }
+
+            auth_url = auth_endpoint + "?" + urllib.parse.urlencode(params)
+            _LOGGER.debug("[Magister auth] silent re-auth: trying %s", self.school_host)
+
+            # Follow redirects manually so we can inspect Location fragments
+            current = auth_url
+            for _ in range(15):
+                async with session.get(current, allow_redirects=False) as resp:
+                    if resp.status in (301, 302, 303, 307, 308):
+                        location = resp.headers.get("Location", "")
+                        if "#" in location:
+                            fragment = location.split("#", 1)[1]
+                            fparams = urllib.parse.parse_qs(fragment)
+                            if "access_token" in fparams:
+                                token = fparams["access_token"][0]
+                                self._access_token = token
+                                self._token_expires = _jwt_expiry(token)
+                                _LOGGER.debug(
+                                    "[Magister auth] silent re-auth succeeded; "
+                                    "token expires %s", self._token_expires
+                                )
+                                return True
+                            # Fragment present but no token — probably an error
+                            # (e.g. error=login_required) → silent auth failed
+                            _LOGGER.debug(
+                                "[Magister auth] silent re-auth: fragment without "
+                                "access_token: %s", fragment[:80]
+                            )
+                            return False
+                        # Normal redirect — follow it
+                        if location.startswith("/"):
+                            p = urllib.parse.urlparse(current)
+                            current = f"{p.scheme}://{p.netloc}{location}"
+                        elif location:
+                            current = location
+                        else:
+                            break
+                    else:
+                        # Landed on a page (challenge page or error) — session expired
+                        _LOGGER.debug(
+                            "[Magister auth] silent re-auth: got HTTP %s, "
+                            "server-side session expired", resp.status
+                        )
+                        return False
+        except Exception as err:
+            _LOGGER.debug("[Magister auth] silent re-auth exception: %s", err)
+        return False
+
     async def authenticate(
         self,
         session: aiohttp.ClientSession,

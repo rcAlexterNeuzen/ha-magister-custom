@@ -74,9 +74,21 @@ Als je account beveiligd is met MFA en je **geen** base32-sleutel hebt:
 4. Open je authenticator-app (bijv. Google Authenticator of Microsoft Authenticator)
 5. Voer de **huidige 6-cijferige code** in — doe dit snel, de code is 30 seconden geldig
 
-> **Let op:** wanneer de sessie later verloopt (typisch na enkele uren/dagen), toont Home Assistant een melding *"Opnieuw authenticeren vereist"*. Klik daarop en voer je wachtwoord en een nieuwe 6-cijferige code in.
-
 Als je wél de base32-sleutel hebt, vul die in bij **TOTP-geheim** en logt de integratie volledig automatisch opnieuw in zonder tussenkomst.
+
+### Hoe de integratie omgaat met verlopen tokens
+
+Wanneer het access token verloopt (typisch na ~1 uur), probeert de integratie automatisch opnieuw in te loggen via drie stappen:
+
+| Stap | Methode | Vereiste |
+|------|---------|----------|
+| 1 | **Silent re-auth** — hergebruikt de bestaande serversessie om direct een nieuw token op te halen, zonder challenges of MFA | Serversessie nog actief (typisch 4–24 uur na laatste login) |
+| 2 | **Volledige challenge flow** — doorloopt username → wachtwoord → TOTP automatisch | Vereist een opgeslagen **TOTP-geheim** |
+| 3 | **Handmatige re-auth** — HA toont de melding *"Opnieuw authenticeren vereist"* | Alleen als stap 1 én 2 falen |
+
+**Aanbeveling voor volledig automatisch werken:** sla je base32 TOTP-geheim op via **Instellingen → Apparaten & Diensten → Magister → Configureren**. De integratie logt dan altijd zelf opnieuw in, ook als de serversessie volledig verlopen is.
+
+> Je kunt het base32-geheim achterhalen via de QR-code die Magister toont bij het instellen van tweestapsverificatie (`<school>.magister.net` → Accountinstellingen → Beveiliging). Scan de QR met een QR-lezer (bijv. de camera-app) om de tekst zichtbaar te maken — het geheim staat na `secret=` in de URL.
 
 ---
 
