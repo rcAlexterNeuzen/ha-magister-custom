@@ -1,10 +1,11 @@
 {
   "domain": "magister_custom",
   "name": "Magister",
-  "documentation": "https://github.com/yourusername/ha-magister-custom",
+  "documentation": "https://github.com/rcAlexterNeuzen/ha-magister-custom",
+  "issue_tracker": "https://github.com/rcAlexterNeuzen/ha-magister-custom/issues",
   "requirements": [],
   "dependencies": [],
-  "codeowners": [],
+  "codeowners": ["@rcAlexterNeuzen"],
   "version": "1.0.1",
   "iot_class": "cloud_polling",
   "config_flow": true
