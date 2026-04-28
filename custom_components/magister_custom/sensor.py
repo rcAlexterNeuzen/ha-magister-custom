@@ -20,6 +20,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import Appointment, MagisterCoordinator, MagisterData, StudentData
@@ -59,7 +60,7 @@ def _fmt_appointment(apt: Appointment | None) -> str:
     if apt is None:
         return "Geen"
     subject = apt.subject or "Afspraak"
-    start = apt.start.astimezone().strftime("%d-%m %H:%M") if apt.start else "?"
+    start = dt_util.as_local(apt.start).strftime("%d-%m %H:%M") if apt.start else "?"
     return f"{subject} om {start}"
 
 
@@ -172,7 +173,7 @@ class MagisterNextAppointmentSensor(_MagisterBaseSensor):
         if s is None or s.next_appointment is None:
             return "Geen"
         apt = s.next_appointment
-        return apt.start.astimezone().strftime("%Y-%m-%d %H:%M")
+        return dt_util.as_local(apt.start).strftime("%Y-%m-%d %H:%M")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

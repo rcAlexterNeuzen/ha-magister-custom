@@ -70,7 +70,7 @@ def _parse_dt(ts: str | None) -> datetime | None:
 def _fmt(dt: datetime | None) -> str:
     if dt is None:
         return ""
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    return dt.astimezone(timezone.utc).isoformat()
 
 
 @dataclass
