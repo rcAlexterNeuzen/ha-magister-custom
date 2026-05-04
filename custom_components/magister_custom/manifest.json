@@ -6,7 +6,7 @@
   "requirements": [],
   "dependencies": [],
   "codeowners": ["@rcAlexterNeuzen"],
-  "version": "1.0.2",
+  "version": "1.0.3",
   "iot_class": "cloud_polling",
   "config_flow": true
 }

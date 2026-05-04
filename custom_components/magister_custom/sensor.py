@@ -237,7 +237,8 @@ class MagisterHomeworkSensor(_MagisterBaseSensor):
         s = self._student
         if s is None:
             return {}
-        hw = [a.as_dict() for a in s.appointments if a.is_homework and not a.is_cancelled]
+        # info_type: 1=huiswerk, 2=toets, 3=proeftoets, 4=schoolexamen, 5=mondeling
+        hw = [a.as_dict() for a in s.appointments if a.info_type in (1, 2, 3, 4, 5) and not a.is_cancelled]
         return {"huiswerk": hw}
 
 
