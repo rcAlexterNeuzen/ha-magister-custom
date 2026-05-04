@@ -218,6 +218,20 @@ Ga daarna naar **Ontwikkelaarstools → Logboek** en zoek op `magister`.
 
 ---
 
+## Changelog
+
+### v1.0.3 — 2026-05-05
+- **Fix:** SO, toetsen, proefwerken en mondelingen (info_type 2–5) worden nu ook opgenomen in de `huiswerk` sensor attribuutlijst, zodat ze zichtbaar zijn in de dashboard kaart "Aankomende toetsen / SO / MO"
+
+### v1.0.2 — 2026-05-05
+- **Nieuw:** Dashboard kaart "Aankomende toetsen / SO / MO (komende week)" toegevoegd — filtert op `toets`, `proeftoets`, `schoolexamen` en `mondeling` met bijpassend icoon per type
+- **Verbetering:** Kalender toont huiswerk-type in de beschrijving: `HUISWERK (TOETS)`, `HUISWERK (PROEFTOETS)`, `HUISWERK (SCHOOLEXAMEN)` of `HUISWERK (MONDELING)` voor niet-regulier huiswerk
+
+### v1.0.1
+- Initiële publieke release
+
+---
+
 ## Disclaimer
 
 Deze integratie is niet officieel geassocieerd met Schoolmaster BV / Magister. Gebruik op eigen risico. Zorg dat je voldoet aan de gebruiksvoorwaarden van Magister.
