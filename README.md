@@ -22,7 +22,7 @@ Werkt met **ouder- én leerlingaccounts** en ondersteunt **MFA (tweestapsverific
 
 | Entity | Beschrijving |
 |--------|-------------|
-| `calendar.magister_<naam>_rooster` | Volledig rooster in de HA Agenda-kaart — lessen, huiswerk en uitval zichtbaar |
+| `calendar.magister_<naam>_rooster` | Volledig rooster in de HA Agenda-kaart — lessen, huiswerk en uitval zichtbaar. Huiswerk toont het type in de beschrijving: `HUISWERK`, `HUISWERK (TOETS)`, `HUISWERK (PROEFTOETS)`, `HUISWERK (SCHOOLEXAMEN)` of `HUISWERK (MONDELING)` |
 
 ---
 
@@ -156,6 +156,7 @@ Het bestand `lovelace_dashboard.yaml` bevat een kant-en-klaar dashboard met de v
 |-------|--------|
 | **Vandaag** | Lessen, huiswerkaantal, wijzigingen, laatste cijfer |
 | **Volgende les** | Vak, locatie, tijdstip |
+| **Aankomende toetsen / SO / MO** | Toetsen, proefwerken, schoolexamens en mondelingen de komende 7 dagen met 📝/📋/🎓/🎤 icoon per type |
 | **Aankomend huiswerk** | Huiswerk de komende 14 dagen, gesorteerd op datum |
 | **Cijfers afgelopen week** | Cijfers van de laatste 7 dagen met 🟢/🔴 indicator |
 | **Recente cijfers (laatste 10)** | Overzicht van de 10 meest recente cijfers |

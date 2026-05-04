@@ -32,6 +32,34 @@ views:
         📝 {{ state_attr(e, 'description') | default('') }}
       {% endif %}
   - type: markdown
+    title: Aankomende toetsen / SO / MO (komende week)
+    content: |
+      {%- set hw = state_attr('sensor.magister_lieke_neuzen_magister_lieke_neuzen_huiswerk', 'huiswerk') -%}
+      {%- set today = now().strftime('%Y-%m-%d') -%}
+      {%- set deadline = (now() + timedelta(days=7)).strftime('%Y-%m-%d') -%}
+      {%- set ns = namespace(items=[]) -%}
+      {%- for h in (hw or []) -%}
+        {%- if h.start is defined and h.start[:10] >= today and h.start[:10] <= deadline
+              and h.type in ['toets', 'proeftoets', 'schoolexamen', 'mondeling'] -%}
+          {%- set ns.items = ns.items + [h] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {%- set sorted = ns.items | sort(attribute='start') -%}
+      {%- if sorted | length == 0 -%}
+      _Geen toetsen / SO / MO de komende week._ ✅
+      {%- else -%}
+      {%- for h in sorted -%}
+      {%- if h.type == 'schoolexamen' -%}{%- set icon = '🎓' -%}{%- set label = 'SO' -%}
+      {%- elif h.type == 'proeftoets' -%}{%- set icon = '📋' -%}{%- set label = 'Proefwerk' -%}
+      {%- elif h.type == 'mondeling' -%}{%- set icon = '🎤' -%}{%- set label = 'Mondeling' -%}
+      {%- else -%}{%- set icon = '📝' -%}{%- set label = 'Toets' -%}
+      {%- endif -%}
+      {{ icon }} **{{ h.subject }}** — {{ label }}
+      📅 {{ h.start[:10] }}{{ ' · ' ~ h.description if h.description else '' }}
+
+      {% endfor -%}
+      {%- endif %}
+  - type: markdown
     title: Aankomend huiswerk (komende 14 dagen)
     content: |
       {%- set hw = state_attr('sensor.magister_lieke_neuzen_magister_lieke_neuzen_huiswerk', 'huiswerk') -%}

@@ -18,7 +18,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import Appointment, MagisterCoordinator, MagisterData, StudentData
+from .coordinator import Appointment, MagisterCoordinator, MagisterData, StudentData, _info_label
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,7 +44,12 @@ def _apt_to_event(apt: Appointment) -> CalendarEvent:
         summary = f"[UITVAL] {summary}"
     description_parts = [apt.description] if apt.description else []
     if apt.is_homework:
-        description_parts.insert(0, "HUISWERK")
+        # info_type 1 = gewoon huiswerk, andere types tonen het soort (toets, proeftoets, mondeling, etc.)
+        if apt.info_type not in (0, 1):
+            type_label = _info_label(apt.info_type).upper()
+            description_parts.insert(0, f"HUISWERK ({type_label})")
+        else:
+            description_parts.insert(0, "HUISWERK")
 
     return CalendarEvent(
         start=apt.start,
