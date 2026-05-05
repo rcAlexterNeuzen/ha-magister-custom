@@ -155,6 +155,8 @@ class Absence:
     reason: str
     handled: bool
     counts: bool
+    lesson: str = ""
+    period: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -164,6 +166,8 @@ class Absence:
             "reason": self.reason,
             "handled": self.handled,
             "counts": self.counts,
+            "lesson": self.lesson,
+            "period": self.period,
         }
 
 
@@ -545,6 +549,18 @@ def _parse_absences(items: list[dict]) -> list[Absence]:
     for item in items:
         start = _parse_dt(item.get("Start") or item.get("Datum") or item.get("start"))
         end = _parse_dt(item.get("Einde") or item.get("Eind") or item.get("einde"))
+        # Lesson / subject
+        vak_raw = item.get("Vak") or item.get("vak")
+        lesson = _parse_vak(vak_raw) if vak_raw else ""
+        # Period number (lesuur)
+        period_van = item.get("LesuurVan") or item.get("Lesuur") or item.get("lesuur") or item.get("lesuurVan")
+        period_tot = item.get("LesuurTot") or item.get("lesuurTot")
+        if period_van and period_tot and str(period_van) != str(period_tot):
+            period = f"uur {period_van}–{period_tot}"
+        elif period_van:
+            period = f"uur {period_van}"
+        else:
+            period = ""
         result.append(Absence(
             start=start,
             end=end,
@@ -552,6 +568,8 @@ def _parse_absences(items: list[dict]) -> list[Absence]:
             reason=item.get("Reden", item.get("reden", item.get("AbsentieSoort", {}).get("Omschrijving", ""))),
             handled=bool(item.get("Afgehandeld", item.get("afgehandeld", False))),
             counts=bool(item.get("Telt", item.get("telt", True))),
+            lesson=lesson,
+            period=period,
         ))
     result.sort(key=lambda a: a.start or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return result

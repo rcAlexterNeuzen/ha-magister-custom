@@ -2,9 +2,16 @@
 
 ## Changelog
 
+### v1.0.6
+- `Absence` dataclass uitgebreid met `lesson` (vak) en `period` (lesuur) velden
+- `_parse_absences()` leest nu `Vak`, `LesuurVan` en `LesuurTot` uit de Magister API
+- Dashboard absenties-kaart toont nu correct de lokale datum (was UTC), vak en lesuur
+- Automation blueprint toegevoegd (`blueprints/magister_notifications.yaml`): herbruikbaar per leerling via de HA Blueprint UI, met instelbare notificatieservice, tijdstip en aankondigingsvenster
+
 ### v1.0.5
 - Absenties sensor toegevoegd (`sensor.magister_<naam>_absenties`): toont het aantal absenties van de afgelopen 4 weken met details (datum, reden, omschrijving, afgehandeld, telt mee)
 - Dashboard kaart "Absenties (afgelopen 4 weken)" toegevoegd
+- Automations toegevoegd voor: nieuw cijfer, nieuwe absentie, uitgevallen les, dagelijkse toetsherinnering
 
 ### v1.0.4
 - Huiswerk-kaart in het dashboard nu zelfde opmaak als de toetsen-kaart (titel, docenten, inhoud)
@@ -240,27 +247,6 @@ logger:
 ```
 
 Ga daarna naar **Ontwikkelaarstools → Logboek** en zoek op `magister`.
-
----
-
-## Changelog
-
-### v1.0.4 — 2026-05-05
-- **Verbetering:** `Vak` veld wordt nu correct uitgelezen als dict (`{"Naam": "..."}`) of string
-- **Nieuw:** Veld `title` toegevoegd aan afspraken → `Titel` uit de API (bv. "Schriftelijke overhoring H3")
-- **Nieuw:** Veld `content` toegevoegd aan afspraken → `Inhoud` / `Aantekening` (te leren stof)
-- **Nieuw:** Veld `teachers` toegevoegd aan afspraken → `Docenten` (kommagescheiden namen)
-- **Verbetering:** Dashboard kaart "Aankomende toetsen / SO / MO" toont nu tijdstip, locatie, titel, docenten en inhoud
-
-### v1.0.3 — 2026-05-05
-- **Fix:** SO, toetsen, proefwerken en mondelingen (info_type 2–5) worden nu ook opgenomen in de `huiswerk` sensor attribuutlijst, zodat ze zichtbaar zijn in de dashboard kaart "Aankomende toetsen / SO / MO"
-
-### v1.0.2 — 2026-05-05
-- **Nieuw:** Dashboard kaart "Aankomende toetsen / SO / MO (komende week)" toegevoegd — filtert op `toets`, `proeftoets`, `schoolexamen` en `mondeling` met bijpassend icoon per type
-- **Verbetering:** Kalender toont huiswerk-type in de beschrijving: `HUISWERK (TOETS)`, `HUISWERK (PROEFTOETS)`, `HUISWERK (SCHOOLEXAMEN)` of `HUISWERK (MONDELING)` voor niet-regulier huiswerk
-
-### v1.0.1
-- Initiële publieke release
 
 ---
 

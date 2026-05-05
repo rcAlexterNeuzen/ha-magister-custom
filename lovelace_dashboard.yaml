@@ -145,9 +145,13 @@ views:
       {%- if a.handled -%}{%- set status = '✅' -%}
       {%- else -%}{%- set status = '⏳' -%}
       {%- endif -%}
-      {{ status }} **{{ as_local(as_datetime(a.start)).strftime('%d-%m-%Y') }}**{% if a.end and a.start[:10] != a.end[:10] %} → {{ as_local(as_datetime(a.end)).strftime('%d-%m-%Y') }}{% endif %}
+      {%- set d_start = as_local(as_datetime(a.start)).strftime('%d-%m-%Y') if a.start else '?' -%}
+      {%- set d_end = as_local(as_datetime(a.end)).strftime('%d-%m-%Y') if a.end else '' -%}
+      {{ status }} **{{ d_start }}**{%- if a.end and d_start != d_end %} → {{ d_end }}{% endif %}
+      {%- if a.lesson %} · 📚 {{ a.lesson }}{% endif %}
+      {%- if a.period %} · 🕐 {{ a.period }}{% endif %}
       {%- if a.reason %} · {{ a.reason }}{% endif %}
-      {%- if a.description %} · {{ a.description }}{% endif %}
+      {%- if a.description and a.description != a.reason %} · {{ a.description }}{% endif %}
       {%- if a.counts %} · _telt mee_{% endif %}
       {% if not loop.last %}
       ---
