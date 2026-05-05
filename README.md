@@ -1,5 +1,30 @@
 # Magister — Home Assistant Custom Integration
 
+## Changelog
+
+### v1.0.5
+- Absenties sensor toegevoegd (`sensor.magister_<naam>_absenties`): toont het aantal absenties van de afgelopen 4 weken met details (datum, reden, omschrijving, afgehandeld, telt mee)
+- Dashboard kaart "Absenties (afgelopen 4 weken)" toegevoegd
+
+### v1.0.4
+- Huiswerk-kaart in het dashboard nu zelfde opmaak als de toetsen-kaart (titel, docenten, inhoud)
+- Tijdstip-weergave gecorrigeerd: tijden worden nu correct in lokale tijdzone getoond
+- Scheidingslijnen (dividers) toegevoegd tussen items in dashboard-kaarten
+
+### v1.0.3
+- Nieuwe velden toegevoegd aan afspraken: `Titel`, `Inhoud`/`Aantekening`, `Docenten`
+- Dashboard-kaart "Aankomende toetsen / SO / MO (komende week)" toegevoegd
+- Parser uitgebreid met `_parse_vak()` en `_parse_teachers()` helpers
+
+### v1.0.2
+- SO, proeftoets en mondeling worden nu ook getoond in de huiswerk-sensorlijst (`info_type 1–5`)
+- Kalender toont het type huiswerk in de beschrijving: `HUISWERK (TOETS)`, `HUISWERK (SCHOOLEXAMEN)`, etc.
+
+### v1.0.1
+- Initiële release met rooster, cijfers, huiswerk en roosterwijzigingen
+
+---
+
 Integreert **Magister** schoolinformatie in Home Assistant. Toont het rooster als kalender en biedt sensoren voor cijfers, huiswerk en roosterwijzigingen.
 
 Werkt met **ouder- én leerlingaccounts** en ondersteunt **MFA (tweestapsverificatie)** — inclusief accounts waarbij je de base32-sleutel niet hebt, door de 6-cijferige code in te voeren bij het inloggen.

@@ -23,7 +23,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .coordinator import Appointment, MagisterCoordinator, MagisterData, StudentData
+from .coordinator import Appointment, MagisterCoordinator, MagisterData, StudentData, Absence, _info_label
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ async def async_setup_entry(
             MagisterGradesSensor(coordinator, student_name, slug),
             MagisterHomeworkSensor(coordinator, student_name, slug),
             MagisterScheduleChangesSensor(coordinator, student_name, slug),
+            MagisterAbsencesSensor(coordinator, student_name, slug),
         ]
 
     async_add_entities(entities, update_before_add=False)
@@ -266,3 +267,29 @@ class MagisterScheduleChangesSensor(_MagisterBaseSensor):
         if s is None:
             return {}
         return {"wijzigingen": [c.as_dict() for c in s.schedule_changes[:20]]}
+
+
+# ---------------------------------------------------------------------------
+# Absences sensor
+# ---------------------------------------------------------------------------
+
+class MagisterAbsencesSensor(_MagisterBaseSensor):
+    """State = number of absences in the last 4 weeks."""
+
+    _attr_icon = "mdi:account-off"
+
+    def __init__(self, coordinator: MagisterCoordinator, student_name: str, slug: str) -> None:
+        super().__init__(coordinator, student_name, slug, "absenties")
+        self._attr_name = f"Magister {student_name} absenties"
+
+    @property
+    def state(self) -> int:
+        s = self._student
+        return len(s.absences) if s else 0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        s = self._student
+        if s is None:
+            return {}
+        return {"absenties": [a.as_dict() for a in s.absences[:30]]}

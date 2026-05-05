@@ -55,13 +55,15 @@ views:
       {%- else -%}{%- set icon = '📝' -%}{%- set label = 'Toets' -%}
       {%- endif -%}
       {{ icon }} **{{ h.subject }}** — {{ label }}
-      📅 {{ h.start[:10] }} · 🕐 {{ h.start[11:16] }}{% if h.location %} · 📍 {{ h.location }}{% endif %}
+      📅 {{ as_local(as_datetime(h.start)).strftime('%d-%m') }} · 🕐 {{ as_local(as_datetime(h.start)).strftime('%H:%M') }}{% if h.location %} · 📍 {{ h.location }}{% endif %}
       {% if h.title and h.title != h.description %} 📌 {{ h.title }}{% endif %}
       {% if h.teachers %} 👤 {{ h.teachers }}{% endif %}
       {% if h.content %}
       📖 {{ h.content }}{% elif h.description %}
       📖 {{ h.description }}{% endif %}
-
+      {% if not loop.last %}
+      ---
+      {% endif %}
       {% endfor -%}
       {%- endif %}
   - type: markdown
@@ -69,16 +71,29 @@ views:
     content: |
       {%- set hw = state_attr('sensor.magister_lieke_neuzen_magister_lieke_neuzen_huiswerk', 'huiswerk') -%}
       {%- set today = now().strftime('%Y-%m-%d') -%}
-      {%- set deadline = (now() + timedelta(days=14)).strftime('%Y-%m-%d') -%}
-      {%- set upcoming = (hw or []) | selectattr('start', 'defined') | selectattr('start', 'ge', today) | selectattr('start', 'le', deadline) | sort(attribute='start') | list -%}
-      {%- if upcoming | length == 0 -%}
+      {%- set deadline = (now() + timedelta(days=7)).strftime('%Y-%m-%d') -%}
+      {%- set ns = namespace(items=[]) -%}
+      {%- for h in (hw or []) -%}
+        {%- if h.start is defined and h.start[:10] >= today and h.start[:10] <= deadline
+              and h.type == 'huiswerk' -%}
+          {%- set ns.items = ns.items + [h] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {%- set sorted = ns.items | sort(attribute='start') -%}
+      {%- if sorted | length == 0 -%}
       _Geen huiswerk de komende 14 dagen._ 🎉
       {%- else -%}
-      {%- for h in upcoming -%}
-      {%- set meta = '📅 ' ~ h.start[:10] ~ (' · ' ~ h.description if h.description else '') -%}
+      {%- for h in sorted -%}
       📚 **{{ h.subject }}**
-      {{ meta }}
-
+      📅 {{ as_local(as_datetime(h.start)).strftime('%d-%m') }} · 🕐 {{ as_local(as_datetime(h.start)).strftime('%H:%M') }}{% if h.location %} · 📍 {{ h.location }}{% endif %}
+      {% if h.title and h.title != h.description %} 📌 {{ h.title }}{% endif %}
+      {% if h.teachers %} 👤 {{ h.teachers }}{% endif %}
+      {% if h.content %}
+      📖 {{ h.content }}{% elif h.description %}
+      📖 {{ h.description }}{% endif %}
+      {% if not loop.last %}
+      ---
+      {% endif %}
       {% endfor -%}
       {%- endif %}
   - type: markdown
@@ -116,6 +131,27 @@ views:
       {{ icon }} **{{ g.subject }}** — **{{ g.value }}**{{ w }}
       {{ meta }}
 
+      {% endfor -%}
+      {%- endif %}
+  - type: markdown
+    title: Absenties (afgelopen 4 weken)
+    content: |
+      {%- set abs = state_attr('sensor.magister_lieke_neuzen_magister_lieke_neuzen_absenties', 'absenties') -%}
+      {%- set items = (abs or []) | sort(attribute='start', reverse=true) -%}
+      {%- if items | length == 0 -%}
+      _Geen absenties geregistreerd._ ✅
+      {%- else -%}
+      {%- for a in items -%}
+      {%- if a.handled -%}{%- set status = '✅' -%}
+      {%- else -%}{%- set status = '⏳' -%}
+      {%- endif -%}
+      {{ status }} **{{ as_local(as_datetime(a.start)).strftime('%d-%m-%Y') }}**{% if a.end and a.start[:10] != a.end[:10] %} → {{ as_local(as_datetime(a.end)).strftime('%d-%m-%Y') }}{% endif %}
+      {%- if a.reason %} · {{ a.reason }}{% endif %}
+      {%- if a.description %} · {{ a.description }}{% endif %}
+      {%- if a.counts %} · _telt mee_{% endif %}
+      {% if not loop.last %}
+      ---
+      {% endif %}
       {% endfor -%}
       {%- endif %}
   - type: markdown

@@ -146,6 +146,28 @@ class ScheduleChange:
 
 
 @dataclass
+class Absence:
+    """A single absence registration."""
+
+    start: datetime | None
+    end: datetime | None
+    description: str
+    reason: str
+    handled: bool
+    counts: bool
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "start": _fmt(self.start),
+            "end": _fmt(self.end),
+            "description": self.description,
+            "reason": self.reason,
+            "handled": self.handled,
+            "counts": self.counts,
+        }
+
+
+@dataclass
 class StudentData:
     """All data for one student."""
 
@@ -154,6 +176,7 @@ class StudentData:
     appointments: list[Appointment] = field(default_factory=list)
     grades: list[Grade] = field(default_factory=list)
     schedule_changes: list[ScheduleChange] = field(default_factory=list)
+    absences: list[Absence] = field(default_factory=list)
 
     # Pre-computed convenience fields
     appointments_today: int = 0
@@ -393,6 +416,19 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
         except Exception as err:
             _LOGGER.warning("Could not fetch grades for %s: %s", name, err)
 
+        # Absences (4 weeks back → today)
+        absence_params = {
+            "van": (today - timedelta(weeks=4)).isoformat(),
+            "tot": today.isoformat(),
+        }
+        try:
+            absenties = await self._client.api_get(
+                session, "personen", student_id, "absenties", params=absence_params
+            )
+            student.absences = _parse_absences(absenties.get("Items", []))
+        except Exception as err:
+            _LOGGER.debug("Could not fetch absences for %s: %s", name, err)
+
         student.recompute()
         return student
 
@@ -501,6 +537,23 @@ def _parse_schedule_changes(items: list[dict]) -> list[ScheduleChange]:
             location=item.get("Lokatie", item.get("Lokaal", "")),
             description=item.get("Omschrijving", ""),
         ))
+    return result
+
+
+def _parse_absences(items: list[dict]) -> list[Absence]:
+    result = []
+    for item in items:
+        start = _parse_dt(item.get("Start") or item.get("Datum") or item.get("start"))
+        end = _parse_dt(item.get("Einde") or item.get("Eind") or item.get("einde"))
+        result.append(Absence(
+            start=start,
+            end=end,
+            description=item.get("Omschrijving", item.get("omschrijving", "")),
+            reason=item.get("Reden", item.get("reden", item.get("AbsentieSoort", {}).get("Omschrijving", ""))),
+            handled=bool(item.get("Afgehandeld", item.get("afgehandeld", False))),
+            counts=bool(item.get("Telt", item.get("telt", True))),
+        ))
+    result.sort(key=lambda a: a.start or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return result
 
 
