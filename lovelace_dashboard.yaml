@@ -55,7 +55,12 @@ views:
       {%- else -%}{%- set icon = '📝' -%}{%- set label = 'Toets' -%}
       {%- endif -%}
       {{ icon }} **{{ h.subject }}** — {{ label }}
-      📅 {{ h.start[:10] }}{{ ' · ' ~ h.description if h.description else '' }}
+      📅 {{ h.start[:10] }} · 🕐 {{ h.start[11:16] }}{% if h.location %} · 📍 {{ h.location }}{% endif %}
+      {% if h.title and h.title != h.description %} 📌 {{ h.title }}{% endif %}
+      {% if h.teachers %} 👤 {{ h.teachers }}{% endif %}
+      {% if h.content %}
+      📖 {{ h.content }}{% elif h.description %}
+      📖 {{ h.description }}{% endif %}
 
       {% endfor -%}
       {%- endif %}

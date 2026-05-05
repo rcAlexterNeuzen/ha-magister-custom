@@ -82,6 +82,9 @@ class Appointment:
     subject: str
     location: str
     description: str
+    title: str
+    content: str
+    teachers: str
     info_type: int
     is_homework: bool
     is_cancelled: bool  # status == 5
@@ -93,6 +96,9 @@ class Appointment:
             "subject": self.subject,
             "location": self.location,
             "description": self.description,
+            "title": self.title,
+            "content": self.content,
+            "teachers": self.teachers,
             "type": _info_label(self.info_type),
             "is_homework": self.is_homework,
             "is_cancelled": self.is_cancelled,
@@ -421,6 +427,28 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
 # Parsing helpers
 # ---------------------------------------------------------------------------
 
+def _parse_vak(vak: Any) -> str:
+    """Extract subject name from Vak field (may be dict or string)."""
+    if isinstance(vak, dict):
+        return vak.get("Naam", vak.get("naam", "")) or ""
+    return str(vak) if vak else ""
+
+
+def _parse_teachers(docenten: Any) -> str:
+    """Extract teacher names from Docenten field (list of dicts or empty)."""
+    if not docenten or not isinstance(docenten, list):
+        return ""
+    names = []
+    for d in docenten:
+        if isinstance(d, dict):
+            name = d.get("Naam", d.get("naam", ""))
+            if name:
+                names.append(name)
+        elif isinstance(d, str):
+            names.append(d)
+    return ", ".join(names)
+
+
 def _parse_appointments(items: list[dict]) -> list[Appointment]:
     result = []
     for item in items:
@@ -431,12 +459,17 @@ def _parse_appointments(items: list[dict]) -> list[Appointment]:
         if end is None:
             end = start + timedelta(hours=1)
         info_type = int(item.get("InfoType", 0) or 0)
+        vak_raw = item.get("Vak")
+        subject = _parse_vak(vak_raw) or item.get("Omschrijving", "")
         result.append(Appointment(
             start=start,
             end=end,
-            subject=item.get("Vak", item.get("Omschrijving", "")),
+            subject=subject,
             location=item.get("Lokatie", item.get("Lokaal", "")),
             description=item.get("Omschrijving", ""),
+            title=item.get("Titel", ""),
+            content=item.get("Inhoud", item.get("Aantekening", "")),
+            teachers=_parse_teachers(item.get("Docenten")),
             info_type=info_type,
             is_homework=info_type == 1,
             is_cancelled=int(item.get("Status", 0) or 0) == 5,

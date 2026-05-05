@@ -220,6 +220,13 @@ Ga daarna naar **Ontwikkelaarstools → Logboek** en zoek op `magister`.
 
 ## Changelog
 
+### v1.0.4 — 2026-05-05
+- **Verbetering:** `Vak` veld wordt nu correct uitgelezen als dict (`{"Naam": "..."}`) of string
+- **Nieuw:** Veld `title` toegevoegd aan afspraken → `Titel` uit de API (bv. "Schriftelijke overhoring H3")
+- **Nieuw:** Veld `content` toegevoegd aan afspraken → `Inhoud` / `Aantekening` (te leren stof)
+- **Nieuw:** Veld `teachers` toegevoegd aan afspraken → `Docenten` (kommagescheiden namen)
+- **Verbetering:** Dashboard kaart "Aankomende toetsen / SO / MO" toont nu tijdstip, locatie, titel, docenten en inhoud
+
 ### v1.0.3 — 2026-05-05
 - **Fix:** SO, toetsen, proefwerken en mondelingen (info_type 2–5) worden nu ook opgenomen in de `huiswerk` sensor attribuutlijst, zodat ze zichtbaar zijn in de dashboard kaart "Aankomende toetsen / SO / MO"
 
