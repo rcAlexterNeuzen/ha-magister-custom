@@ -1,3 +1,4 @@
+ 
 blueprint:
   name: "Magister – Leerling notificaties"
   description: >
@@ -10,16 +11,8 @@ blueprint:
     Vereist de Magister Custom Integration (ha-magister-custom).
     Maak voor elke leerling een aparte instantie aan.
   domain: automation
-  input:
-    student_slug:
-      name: "Leerling slug"
-      description: >
-        Het slug-gedeelte van de sensor entity-id. Voorbeeld: als de sensor
-        'sensor.magister_lieke_neuzen_magister_lieke_neuzen' heet, vul dan
-        'lieke_neuzen' in.
-      selector:
-        text:
 
+  input:
     student_name:
       name: "Leerlingnaam (voor berichten)"
       description: "Naam zoals die in pushberichten verschijnt."
@@ -31,8 +24,7 @@ blueprint:
       name: "Notificatieservice"
       description: >
         De notify-service voor pushberichten, bijv.
-        'notify.mobile_app_iphone_van_alex'. Gebruik 'notify.notify' voor de
-        standaardservice.
+        'notify.mobile_app_iphone_van_alex'. Gebruik 'notify.notify' voor de standaardservice.
       default: "notify.notify"
       selector:
         text:
@@ -54,20 +46,48 @@ blueprint:
           max: 30
           unit_of_measurement: dagen
 
+    cijfers_sensor:
+      name: "Magister cijfers sensor"
+      description: "Sensor die de cijfers (en attribuut 'cijfers') bevat."
+      selector:
+        entity:
+          domain: sensor
+
+    absenties_sensor:
+      name: "Magister absenties sensor"
+      description: "Sensor die absenties (en attribuut 'absenties') bevat."
+      selector:
+        entity:
+          domain: sensor
+
+    magister_sensor:
+      name: "Magister basis sensor"
+      description: "Sensor met attribuut 'uitval_vandaag'."
+      selector:
+        entity:
+          domain: sensor
+
+    huiswerk_sensor:
+      name: "Magister huiswerk sensor"
+      description: "Sensor met attribuut 'huiswerk'."
+      selector:
+        entity:
+          domain: sensor
+
 # ============================================================
-# Automation 1 – Nieuw cijfer
+# Triggers
 # ============================================================
 trigger:
   - platform: state
-    entity_id: "sensor.magister_{{ student_slug }}_magister_{{ student_slug }}_cijfers"
+    entity_id: !input cijfers_sensor
     id: nieuw_cijfer
 
   - platform: state
-    entity_id: "sensor.magister_{{ student_slug }}_magister_{{ student_slug }}_absenties"
+    entity_id: !input absenties_sensor
     id: nieuwe_absentie
 
   - platform: state
-    entity_id: "sensor.magister_{{ student_slug }}_magister_{{ student_slug }}"
+    entity_id: !input magister_sensor
     attribute: uitval_vandaag
     id: les_uitgevallen
 
@@ -75,14 +95,37 @@ trigger:
     at: !input daily_reminder_time
     id: dagelijkse_herinnering
 
+# ============================================================
+# Variables
+# ============================================================
 variables:
-  slug: !input student_slug
   naam: !input student_name
   notify: !input notify_service
   dagen: !input reminder_days_ahead
 
+  cijfers_entity: !input cijfers_sensor
+  absenties_entity: !input absenties_sensor
+  magister_entity: !input magister_sensor
+  huiswerk_entity: !input huiswerk_sensor
+
+  # Helper: maak van een state altijd een getal; tekst => 0
+  # Gebruik: {{ num(trigger.to_state.state) }}
+  num: >
+    {% macro num(s) -%}
+      {%- set v = (s | string) -%}
+      {%- if v in ['unknown','unavailable','–','', 'None', 'none'] -%}
+        0
+      {%- else -%}
+        {{ v | float(0) }}
+      {%- endif -%}
+    {%- endmacro -%}
+    {{ num }}
+
 condition: []
 
+# ============================================================
+# Actions
+# ============================================================
 action:
   - choose:
 
@@ -92,17 +135,21 @@ action:
       - conditions:
           - condition: trigger
             id: nieuw_cijfer
+
+          # Trigger alleen bij echte verandering; tekstwaarden worden toegestaan
+          # maar we onderdrukken pure "non-state" ruis.
           - condition: template
             value_template: >
-              {{ trigger.to_state.state not in ['–', 'unavailable', 'unknown', '']
-                 and trigger.to_state.state != trigger.from_state.state }}
+              {% set new = trigger.to_state.state if trigger.to_state else '' %}
+              {% set old = trigger.from_state.state if trigger.from_state else '' %}
+              {{ new != old and new not in ['unknown','unavailable',''] }}
+
         sequence:
           - service: "{{ notify }}"
             data:
               title: "📝 Nieuw cijfer – {{ naam }}"
               message: >
-                {%- set sensor = 'sensor.magister_' ~ slug ~ '_magister_' ~ slug ~ '_cijfers' -%}
-                {%- set cijfers = state_attr(sensor, 'cijfers') -%}
+                {%- set cijfers = state_attr(cijfers_entity, 'cijfers') -%}
                 {%- set g = cijfers[0] if cijfers else none -%}
                 {%- if g -%}
                 {{ g.subject }}: {{ g.value -}}
@@ -120,16 +167,20 @@ action:
       - conditions:
           - condition: trigger
             id: nieuwe_absentie
+
+          # Tekst => 0, dus dit blijft stabiel
           - condition: template
             value_template: >
-              {{ trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}
+              {% set new = trigger.to_state.state if trigger.to_state else '' %}
+              {% set old = trigger.from_state.state if trigger.from_state else '' %}
+              {{ (new | float(0)) > (old | float(0)) }}
+
         sequence:
           - service: "{{ notify }}"
             data:
               title: "⚠️ Absentie gemeld – {{ naam }}"
               message: >
-                {%- set sensor = 'sensor.magister_' ~ slug ~ '_magister_' ~ slug ~ '_absenties' -%}
-                {%- set abs = state_attr(sensor, 'absenties') -%}
+                {%- set abs = state_attr(absenties_entity, 'absenties') -%}
                 {%- set a = abs[0] if abs else none -%}
                 {%- if a -%}
                 Datum: {{ as_local(as_datetime(a.start)).strftime('%d-%m-%Y') if a.start else '?' -}}
@@ -150,25 +201,31 @@ action:
       - conditions:
           - condition: trigger
             id: les_uitgevallen
+
           - condition: template
             value_template: >
-              {%- set new_count = trigger.to_state.attributes.uitval_vandaag | default([]) | length -%}
-              {%- set old_count = trigger.from_state.attributes.uitval_vandaag | default([]) | length -%}
-              {{ new_count > old_count }}
+              {% set new_list = trigger.to_state.attributes.uitval_vandaag if trigger.to_state else [] %}
+              {% set old_list = trigger.from_state.attributes.uitval_vandaag if trigger.from_state else [] %}
+              {{ (new_list | default([]) | length) > (old_list | default([]) | length) }}
+
         sequence:
           - service: "{{ notify }}"
             data:
               title: "❌ Les uitgevallen – {{ naam }}"
               message: >
-                {%- set sensor = 'sensor.magister_' ~ slug ~ '_magister_' ~ slug -%}
-                {%- set uitval = state_attr(sensor, 'uitval_vandaag') or [] -%}
+                {%- set uitval = state_attr(magister_entity, 'uitval_vandaag') or [] -%}
+                {%- if uitval | length == 0 -%}
+                Er is een les uitgevallen.
+                {%- else -%}
                 {%- for les in uitval -%}
                 {{ les.subject -}}
                 {%- if les.start %} om {{ as_local(as_datetime(les.start)).strftime('%H:%M') }}{% endif -%}
                 {%- if les.location %} ({{ les.location }}){% endif %}
                 {% if not loop.last %}
+
                 {% endif %}
-                {%- endfor %}
+                {%- endfor -%}
+                {%- endif -%}
 
       # ----------------------------------------------------------
       # 4. Dagelijkse herinnering toetsen / SO / mondeling
@@ -176,10 +233,10 @@ action:
       - conditions:
           - condition: trigger
             id: dagelijkse_herinnering
+
           - condition: template
             value_template: >
-              {%- set sensor = 'sensor.magister_' ~ slug ~ '_magister_' ~ slug ~ '_huiswerk' -%}
-              {%- set hw = state_attr(sensor, 'huiswerk') or [] -%}
+              {%- set hw = state_attr(huiswerk_entity, 'huiswerk') or [] -%}
               {%- set today = now().strftime('%Y-%m-%d') -%}
               {%- set deadline = (now() + timedelta(days=dagen | int)).strftime('%Y-%m-%d') -%}
               {%- set ns = namespace(n=0) -%}
@@ -190,13 +247,13 @@ action:
                 {%- endif -%}
               {%- endfor -%}
               {{ ns.n > 0 }}
+
         sequence:
           - service: "{{ notify }}"
             data:
               title: "📚 Aankomende toetsen – {{ naam }}"
               message: >
-                {%- set sensor = 'sensor.magister_' ~ slug ~ '_magister_' ~ slug ~ '_huiswerk' -%}
-                {%- set hw = state_attr(sensor, 'huiswerk') or [] -%}
+                {%- set hw = state_attr(huiswerk_entity, 'huiswerk') or [] -%}
                 {%- set today = now().strftime('%Y-%m-%d') -%}
                 {%- set deadline = (now() + timedelta(days=dagen | int)).strftime('%Y-%m-%d') -%}
                 {%- set ns = namespace(items=[]) -%}
@@ -206,8 +263,8 @@ action:
                     {%- set ns.items = ns.items + [h] -%}
                   {%- endif -%}
                 {%- endfor -%}
-                {%- set sorted = ns.items | sort(attribute='start') -%}
-                {%- for h in sorted -%}
+                {%- set sorted_items = ns.items | sort(attribute='start') -%}
+                {%- for h in sorted_items -%}
                 {%- if h.type == 'schoolexamen' -%}🎓 SO
                 {%- elif h.type == 'proeftoets' -%}📋 Proefwerk
                 {%- elif h.type == 'mondeling' -%}🎤 Mondeling
