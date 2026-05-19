@@ -190,7 +190,7 @@ class MagisterNextAppointmentSensor(_MagisterBaseSensor):
 # ---------------------------------------------------------------------------
 
 class MagisterGradesSensor(_MagisterBaseSensor):
-    """State = most recent grade value; attributes = last 10 grades."""
+    """State = most recent grade value; attributes = all grades + grouped by period."""
 
     _attr_icon = "mdi:school-outline"
 
@@ -210,8 +210,48 @@ class MagisterGradesSensor(_MagisterBaseSensor):
         s = self._student
         if s is None:
             return {}
+
+        all_grades = [g.as_dict() for g in s.grades]
+
+        cijfers_per_periode: dict[str, list] = {}
+        for g in s.grades:
+            key = g.period if g.period else "–"
+            cijfers_per_periode.setdefault(key, []).append(g.as_dict())
+
+        grade_totals: dict[str, float] = {}
+        grade_weights: dict[str, float] = {}
+        grade_names: dict[str, str] = {}
+        for g in s.grades:
+            grp = g.subject or g.subject_name
+            if not grp:
+                continue
+            try:
+                val = float(str(g.value).replace(',', '.'))
+            except (ValueError, TypeError):
+                continue
+            if val < 1:
+                continue
+            w = g.weight if g.weight is not None else 1.0
+            grade_totals.setdefault(grp, 0.0)
+            grade_weights.setdefault(grp, 0.0)
+            grade_totals[grp] += val * w
+            grade_weights[grp] += w
+            if grp not in grade_names:
+                grade_names[grp] = g.subject_name or grp
+        gemiddelden = {
+            grp: {
+                "gemiddelde": round(grade_totals[grp] / grade_weights[grp], 1),
+                "subject_name": grade_names.get(grp, grp),
+            }
+            for grp in sorted(grade_totals)
+            if grade_weights[grp] > 0
+        }
+
         return {
-            "cijfers": [g.as_dict() for g in s.grades[:10]],
+            "cijfers": all_grades,
+            "cijfers_per_periode": cijfers_per_periode,
+            "aantal": len(all_grades),
+            "gemiddelden": gemiddelden,
         }
 
 

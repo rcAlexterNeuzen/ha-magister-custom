@@ -2,32 +2,58 @@
 
 ## Changelog
 
+### v1.0.8
+
+- `MagisterGradesSensor` berekent gewogen gemiddelden per vak in Python en exposeert ze als `gemiddelden`-attribuut (dict: vakcode → `{gemiddelde, subject_name}`)
+- Gemiddeldenberekening valt terug op vaknaam als de API geen vakcode (`code`) teruggeeft
+- Cijferwaarden met komma als decimaalteken (bijv. `"8,5"`) worden nu correct geparsed
+- Dashboard-kaart "Gemiddelde per vak" herschreven om `gemiddelden`-attribuut te gebruiken i.p.v. Jinja2-berekening
+
+### v1.0.7
+
+- `Grade` dataclass uitgebreid met `subject_name` (volledige vaknaam) en `period` (schoolperiode)
+- `_parse_grades()` leest nu `vak.naam`, `CijferKolom.Periode` en directe `Periode`/`periode` velden uit de API
+- Cijfers-sensor haalt nu tot **200** cijfers op i.p.v. 50
+- `sensor.magister_<naam>_grades` exposeert alle cijfers (niet meer beperkt tot 10) met twee nieuwe attributen:
+  - `cijfers_per_periode` — alle cijfers gegroepeerd per periode (dict: periode → lijst)
+  - `aantal` — totaal aantal opgehaalde cijfers
+- Dashboard uitgebreid met drie nieuwe kaarten:
+  - **Cijfers per periode** — alle cijfers per schoolperiode met gemiddelde per periode
+  - **Gemiddelde per vak** — gewogen gemiddelde per vak over alle perioden
+  - **Cijferverloop grafiek** — scatter-grafiek van alle cijfers over tijd (vereist `custom:apexcharts-card` via HACS)
+
 ### v1.0.6
+
 - `Absence` dataclass uitgebreid met `lesson` (vak) en `period` (lesuur) velden
 - `_parse_absences()` leest nu `Vak`, `LesuurVan` en `LesuurTot` uit de Magister API
 - Dashboard absenties-kaart toont nu correct de lokale datum (was UTC), vak en lesuur
 - Automation blueprint toegevoegd (`blueprints/magister_notifications.yaml`): herbruikbaar per leerling via de HA Blueprint UI, met instelbare notificatieservice, tijdstip en aankondigingsvenster
 
 ### v1.0.5
+
 - Absenties sensor toegevoegd (`sensor.magister_<naam>_absenties`): toont het aantal absenties van de afgelopen 4 weken met details (datum, reden, omschrijving, afgehandeld, telt mee)
 - Dashboard kaart "Absenties (afgelopen 4 weken)" toegevoegd
 - Automations toegevoegd voor: nieuw cijfer, nieuwe absentie, uitgevallen les, dagelijkse toetsherinnering
 
 ### v1.0.4
+
 - Huiswerk-kaart in het dashboard nu zelfde opmaak als de toetsen-kaart (titel, docenten, inhoud)
 - Tijdstip-weergave gecorrigeerd: tijden worden nu correct in lokale tijdzone getoond
 - Scheidingslijnen (dividers) toegevoegd tussen items in dashboard-kaarten
 
 ### v1.0.3
+
 - Nieuwe velden toegevoegd aan afspraken: `Titel`, `Inhoud`/`Aantekening`, `Docenten`
 - Dashboard-kaart "Aankomende toetsen / SO / MO (komende week)" toegevoegd
 - Parser uitgebreid met `_parse_vak()` en `_parse_teachers()` helpers
 
 ### v1.0.2
+
 - SO, proeftoets en mondeling worden nu ook getoond in de huiswerk-sensorlijst (`info_type 1–5`)
 - Kalender toont het type huiswerk in de beschrijving: `HUISWERK (TOETS)`, `HUISWERK (SCHOOLEXAMEN)`, etc.
 
 ### v1.0.1
+
 - Initiële release met rooster, cijfers, huiswerk en roosterwijzigingen
 
 ---
@@ -46,7 +72,7 @@ Werkt met **ouder- én leerlingaccounts** en ondersteunt **MFA (tweestapsverific
 |--------|--------|------------|
 | `sensor.magister_<naam>` | Aantal lessen vandaag | Naam, lessen vandaag, huiswerk, wijzigingen, laatste cijfer, volgende afspraak, **uitval_vandaag** (lijst van uitgevallen lessen vandaag) |
 | `sensor.magister_<naam>_next_appointment` | Datum/tijd volgende les | Vak, locatie, type, start, einde |
-| `sensor.magister_<naam>_grades` | Meest recente cijfer | Laatste 10 cijfers met vak, omschrijving, weging en datum |
+| `sensor.magister_<naam>_grades` | Meest recente cijfer | Alle cijfers (`cijfers`), gegroepeerd per periode (`cijfers_per_periode`), totaal (`aantal`), gewogen gemiddelde per vak (`gemiddelden`) — elk cijfer bevat vak, vaknaam, omschrijving, waarde, weging, datum en periode |
 | `sensor.magister_<naam>_homework` | Aantal huiswerkopdrachten | Lijst van huiswerk (vak, start, omschrijving) |
 | `sensor.magister_<naam>_schedule_changes` | Aantal roosterwijzigingen | Lijst van wijzigingen (vak, start, einde, locatie) |
 
@@ -191,7 +217,10 @@ Het bestand `lovelace_dashboard.yaml` bevat een kant-en-klaar dashboard met de v
 | **Aankomende toetsen / SO / MO** | Toetsen, proefwerken, schoolexamens en mondelingen de komende 7 dagen met 📝/📋/🎓/🎤 icoon per type |
 | **Aankomend huiswerk** | Huiswerk de komende 14 dagen, gesorteerd op datum |
 | **Cijfers afgelopen week** | Cijfers van de laatste 7 dagen met 🟢/🔴 indicator |
-| **Recente cijfers (laatste 10)** | Overzicht van de 10 meest recente cijfers |
+| **Recente cijfers (laatste 20)** | Overzicht van de 20 meest recente cijfers met volledige vaknaam |
+| **Cijfers per periode** | Alle cijfers gegroepeerd per schoolperiode, met gemiddelde per periode |
+| **Gemiddelde per vak** | Gewogen gemiddelde per vak over alle perioden |
+| **Cijferverloop grafiek** | Scatter-grafiek van alle cijfers over tijd (vereist `custom:apexcharts-card` via HACS) |
 | **Roosterwijzigingen** | Uitval en wijzigingen |
 | **Roosterkalender** | HA kalenderweergave |
 

@@ -114,14 +114,18 @@ class Grade:
     value: str
     weight: float | None
     entered_on: datetime | None
+    subject_name: str = ""
+    period: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "subject": self.subject,
+            "subject_name": self.subject_name,
             "description": self.description,
             "value": self.value,
             "weight": self.weight,
             "entered_on": _fmt(self.entered_on),
+            "period": self.period,
         }
 
 
@@ -406,7 +410,7 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
         except Exception as err:
             _LOGGER.debug("Could not fetch schedule changes for %s: %s", name, err)
 
-        # Latest grades (top 50)
+        # Latest grades (top 200 – enough for a full school year across all subjects)
         try:
             cijfers = await self._client.api_get(
                 session,
@@ -414,7 +418,7 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
                 student_id,
                 "cijfers",
                 "laatste",
-                params={"top": 50},
+                params={"top": 200},
             )
             student.grades = _parse_grades(cijfers.get("items", []))
         except Exception as err:
@@ -521,12 +525,31 @@ def _parse_appointments(items: list[dict]) -> list[Appointment]:
 def _parse_grades(items: list[dict]) -> list[Grade]:
     result = []
     for item in items:
+        vak = item.get("vak") or item.get("Vak") or {}
+        if isinstance(vak, dict):
+            subject = vak.get("code", vak.get("Code", ""))
+            subject_name = vak.get("naam", vak.get("Naam", subject))
+        else:
+            subject = str(vak) if vak else ""
+            subject_name = subject
+
+        # Period from CijferKolom (nested) or direct Periode field
+        kolom = item.get("CijferKolom") or item.get("cijferKolom") or {}
+        period_raw = (
+            kolom.get("Periode", kolom.get("periode"))
+            or item.get("Periode")
+            or item.get("periode")
+        )
+        period = str(period_raw) if period_raw is not None else ""
+
         result.append(Grade(
-            subject=item.get("vak", {}).get("code", item.get("Vak", {}).get("Code", "")),
+            subject=subject,
+            subject_name=subject_name,
             description=item.get("omschrijving", item.get("Omschrijving", "")),
             value=str(item.get("waarde", item.get("Waarde", ""))),
             weight=_safe_float(item.get("weegfactor", item.get("Weegfactor"))),
             entered_on=_parse_dt(item.get("ingevoerdOp", item.get("IngevoerdOp"))),
+            period=period,
         ))
     return result
 
