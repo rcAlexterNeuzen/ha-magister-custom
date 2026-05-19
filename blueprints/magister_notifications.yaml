@@ -108,19 +108,6 @@ variables:
   magister_entity: !input magister_sensor
   huiswerk_entity: !input huiswerk_sensor
 
-  # Helper: maak van een state altijd een getal; tekst => 0
-  # Gebruik: {{ num(trigger.to_state.state) }}
-  num: >
-    {% macro num(s) -%}
-      {%- set v = (s | string) -%}
-      {%- if v in ['unknown','unavailable','–','', 'None', 'none'] -%}
-        0
-      {%- else -%}
-        {{ v | float(0) }}
-      {%- endif -%}
-    {%- endmacro -%}
-    {{ num }}
-
 condition: []
 
 # ============================================================
