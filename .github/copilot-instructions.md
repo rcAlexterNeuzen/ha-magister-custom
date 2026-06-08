@@ -45,7 +45,16 @@ Every change that adds or modifies sensor attributes **must** also update `lovel
 - Removed attributes → remove them from any card that references them.
 - Entity IDs in the dashboard follow the pattern `sensor.magister_lieke_neuzen_magister_lieke_neuzen_<suffix>`. Update them if the suffix changes.
 
-### 3. Follow the existing code conventions
+### 3. Versioning and GitHub releases
+
+Every change that bumps `manifest.json` version **automatically creates a GitHub release** via `.github/workflows/release.yml` when pushed to `main`/`master`. HACS uses these release tags to notify users of updates.
+
+Rules:
+- The tag format is `v{version}` (e.g. `v1.0.9`). The workflow creates it automatically — **do not create tags manually**.
+- The version in `manifest.json` must be bumped **in the same commit** as the code change. Pushing to `main` with the same version as an existing release does nothing (idempotent check in the workflow).
+- `hacs.json` → `homeassistant` sets the minimum HA version shown in HACS. Update it only when a new HA API is required.
+
+### 4. Follow the existing code conventions
 
 #### Python
 

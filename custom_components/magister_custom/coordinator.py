@@ -228,6 +228,7 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
             _LOGGER,
             name=f"{DOMAIN}_{entry.data[CONF_SCHOOL]}_{entry.data[CONF_USERNAME]}",
             update_interval=timedelta(minutes=SCAN_INTERVAL_MINUTES),
+            config_entry=entry,
         )
         self.entry = entry
         self._client = MagisterClient(

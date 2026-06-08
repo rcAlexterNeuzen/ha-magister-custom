@@ -2,6 +2,12 @@
 
 ## Changelog
 
+### v1.0.9
+
+- Compatibiliteit hersteld met Home Assistant 2024.4+ / 2026.x: `FlowResult` (verwijderd uit HA core) vervangen door `ConfigFlowResult` in de config flow — hierdoor werkte de MFA/herverificatie-stap niet meer
+- `DataUpdateCoordinator` krijgt nu correct de `config_entry` parameter mee (vereist vanaf HA 2025.x)
+- Minimale HA-versie verhoogd naar 2024.4.0
+
 ### v1.0.8
 
 - `MagisterGradesSensor` berekent gewogen gemiddelden per vak in Python en exposeert ze als `gemiddelden`-attribuut (dict: vakcode → `{gemiddelde, subject_name}`)

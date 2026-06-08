@@ -8,8 +8,8 @@ import re
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import callback
-from homeassistant.data_entry_flow import FlowResult
 
 from .auth import MagisterAuthError, MagisterClient, MagisterTOTPFailed, MagisterTOTPRequired
 from .const import CONF_ACCESS_TOKEN, CONF_PASSWORD, CONF_SCHOOL, CONF_TOTP_SECRET, CONF_USERNAME, DOMAIN
@@ -87,7 +87,7 @@ class MagisterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -130,7 +130,7 @@ class MagisterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_mfa(
         self, user_input: dict | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -175,12 +175,12 @@ class MagisterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # Re-auth
     # ------------------------------------------------------------------
 
-    async def async_step_reauth(self, entry_data: dict | None = None) -> FlowResult:
+    async def async_step_reauth(self, entry_data: dict | None = None) -> ConfigFlowResult:
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         entry = self._get_reauth_entry()
         errors: dict[str, str] = {}
 
@@ -241,7 +241,7 @@ class MagisterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         password: str,
         totp_secret: str | None,
         access_token: str | None = None,
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         # Note: async_set_unique_id must be awaited, so callers that reach here
         # have already passed validation; unique_id collision is handled below.
         data: dict = {
@@ -269,7 +269,7 @@ class MagisterOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
         self._entry = entry
 
-    async def async_step_init(self, user_input: dict | None = None) -> FlowResult:
+    async def async_step_init(self, user_input: dict | None = None) -> ConfigFlowResult:
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
