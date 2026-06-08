@@ -258,6 +258,7 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
         """Close the auth session on teardown."""
         if self._auth_session and not self._auth_session.closed:
             await self._auth_session.close()
+            self._auth_session = None
         await super().async_shutdown()
 
     # ------------------------------------------------------------------
@@ -265,53 +266,66 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
     # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> MagisterData:
-        """Fetch all data; re-authenticate once if the token has expired."""
+        """Fetch all data, proactively refreshing the token before it expires."""
+        # Proactive refresh: token is expired or about to expire (within 5 min).
+        # Always use a fresh session so prior cookie state never contaminates
+        # the silent re-auth attempt.
+        if not self._client.is_authenticated():
+            _LOGGER.debug("Token expired or expiring soon – refreshing proactively")
+            await self._reauthenticate()
+
         try:
             return await self._fetch_all()
         except MagisterAuthError:
-            _LOGGER.debug("Token expired or missing – attempting re-authentication")
-            auth_session = self._get_auth_session()
-
-            # 1. Try silent re-auth first (reuses existing server-side OIDC session).
-            #    This works without MFA as long as the server session is still valid,
-            #    which is typically much longer than the access token lifetime.
-            if await self._client.try_silent_reauthenticate(auth_session):
-                _LOGGER.debug("Silent re-auth succeeded – no MFA needed")
-                try:
-                    return await self._fetch_all()
-                except Exception as err:
-                    raise UpdateFailed(f"Data fetch failed after silent re-auth: {err}") from err
-
-            # 2. Silent auth failed (server session expired) – try full challenge flow.
-            #    Use a FRESH session to avoid cookie contamination from the failed
-            #    silent re-auth attempt (partial redirects may have modified cookie state).
-            _LOGGER.debug("Silent re-auth failed – trying full challenge flow with fresh session")
-            if self._auth_session and not self._auth_session.closed:
-                await self._auth_session.close()
-            self._auth_session = None
-            fresh_session = self._get_auth_session()
-            try:
-                await self._client.authenticate(fresh_session)
-            except MagisterTOTPRequired:
-                # No stored TOTP secret → user must re-authenticate via HA UI
-                _LOGGER.warning(
-                    "Magister session fully expired and no TOTP secret stored. "
-                    "Triggering re-auth. Provide a base32 TOTP secret in the "
-                    "integration settings to avoid this."
-                )
-                self.entry.async_start_reauth(self.hass)
-                raise UpdateFailed(
-                    "Magister session expired and MFA is required. "
-                    "Please re-authenticate the integration."
-                )
-            except MagisterAuthError as err:
-                raise UpdateFailed(f"Magister authentication failed: {err}") from err
+            # Unexpected 401 mid-fetch (server-side token invalidation).
+            _LOGGER.debug("API returned 401 during fetch – retrying after re-auth")
+            await self._reauthenticate()
             try:
                 return await self._fetch_all()
             except Exception as err:
                 raise UpdateFailed(f"Data fetch failed after re-auth: {err}") from err
         except aiohttp.ClientError as err:
             raise UpdateFailed(f"Network error: {err}") from err
+
+    async def _reauthenticate(self) -> None:
+        """Refresh the access token: silent re-auth first, full challenge as fallback.
+
+        Always closes and recreates the auth session before each attempt so that
+        leftover cookies from a previous challenge flow cannot interfere.
+        """
+        # -- Step 1: silent re-auth (no MFA needed while server session is live) --
+        self._reset_auth_session()
+        silent_session = self._get_auth_session()
+        if await self._client.try_silent_reauthenticate(silent_session):
+            _LOGGER.debug("Silent re-auth succeeded – token renewed without MFA")
+            return
+
+        # -- Step 2: full challenge flow with another clean session --
+        _LOGGER.debug("Silent re-auth failed – attempting full challenge flow")
+        self._reset_auth_session()
+        full_session = self._get_auth_session()
+        try:
+            await self._client.authenticate(full_session)
+            _LOGGER.debug("Full re-auth succeeded")
+        except MagisterTOTPRequired:
+            _LOGGER.warning(
+                "Magister session fully expired and no TOTP secret stored. "
+                "Provide a base32 TOTP secret in the integration settings to "
+                "avoid manual re-authentication."
+            )
+            self.entry.async_start_reauth(self.hass)
+            raise UpdateFailed(
+                "Magister session expired and MFA is required. "
+                "Please re-authenticate the integration."
+            )
+        except MagisterAuthError as err:
+            raise UpdateFailed(f"Magister authentication failed: {err}") from err
+
+    def _reset_auth_session(self) -> None:
+        """Close and discard the current auth session."""
+        if self._auth_session and not self._auth_session.closed:
+            self.hass.async_create_task(self._auth_session.close())
+        self._auth_session = None
 
     # ------------------------------------------------------------------
     # Ensure authenticated (called by config_flow for validation)
@@ -320,16 +334,16 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
     async def async_ensure_authenticated(self) -> None:
         """Authenticate if not already done (used by config_flow validation)."""
         if not self._client.is_authenticated():
-            await self._client.authenticate(self._get_auth_session())
+            await self._reauthenticate()
 
     # ------------------------------------------------------------------
     # Data fetching
     # ------------------------------------------------------------------
 
     async def _fetch_all(self) -> MagisterData:
-        """Return full MagisterData; assumes token is valid."""
+        """Return full MagisterData; token must already be valid."""
         if not self._client.is_authenticated():
-            await self._client.authenticate(self._get_auth_session())
+            raise MagisterAuthError("Not authenticated")
 
         api = async_get_clientsession(self.hass)
 

@@ -2,6 +2,12 @@
 
 ## Changelog
 
+### v1.0.10
+
+- Token-vernieuwing werkt nu betrouwbaar: de authenticatie-sessie wordt altijd opnieuw aangemaakt vóór een silent re-auth poging, zodat overgebleven cookies van een eerdere challenge-flow niet kunnen interfereren
+- Silent re-auth wordt nu proactief gestart zodra het token binnen 5 minuten verloopt (in plaats van ná een mislukte API-aanroep), waardoor de integratie aaneengesloten actief blijft zonder handmatige MFA
+- `_fetch_all()` probeert niet langer zelf te authenticeren; alle authenticatielogica is gecentraliseerd in `_reauthenticate()`
+
 ### v1.0.9
 
 - Compatibiliteit hersteld met Home Assistant 2024.4+ / 2026.x: `FlowResult` (verwijderd uit HA core) vervangen door `ConfigFlowResult` in de config flow — hierdoor werkte de MFA/herverificatie-stap niet meer
@@ -75,7 +81,7 @@ Werkt met **ouder- én leerlingaccounts** en ondersteunt **MFA (tweestapsverific
 ### Sensoren (per leerling)
 
 | Entity | Status | Attributen |
-|--------|--------|------------|
+| ------ | ------ | ---------- |
 | `sensor.magister_<naam>` | Aantal lessen vandaag | Naam, lessen vandaag, huiswerk, wijzigingen, laatste cijfer, volgende afspraak, **uitval_vandaag** (lijst van uitgevallen lessen vandaag) |
 | `sensor.magister_<naam>_next_appointment` | Datum/tijd volgende les | Vak, locatie, type, start, einde |
 | `sensor.magister_<naam>_grades` | Meest recente cijfer | Alle cijfers (`cijfers`), gegroepeerd per periode (`cijfers_per_periode`), totaal (`aantal`), gewogen gemiddelde per vak (`gemiddelden`) — elk cijfer bevat vak, vaknaam, omschrijving, waarde, weging, datum en periode |
@@ -85,7 +91,7 @@ Werkt met **ouder- én leerlingaccounts** en ondersteunt **MFA (tweestapsverific
 ### Kalender
 
 | Entity | Beschrijving |
-|--------|-------------|
+| ------ | ----------- |
 | `calendar.magister_<naam>_rooster` | Volledig rooster in de HA Agenda-kaart — lessen, huiswerk en uitval zichtbaar. Huiswerk toont het type in de beschrijving: `HUISWERK`, `HUISWERK (TOETS)`, `HUISWERK (PROEFTOETS)`, `HUISWERK (SCHOOLEXAMEN)` of `HUISWERK (MONDELING)` |
 
 ---
@@ -122,7 +128,7 @@ Kopieer de map `magister_custom` naar je Home Assistant configuratiemap:
 ## Configuratie
 
 | Veld | Verplicht | Uitleg |
-|------|-----------|--------|
+| ---- | --------- | ------ |
 | **Schoolnaam** | Ja | Het subdomein van je school, bijv. `ovozaanstad` voor `ovozaanstad.magister.net`. Spaties en de volledige URL worden automatisch verwerkt. |
 | **Gebruikersnaam** | Ja | Je Magister-gebruikersnaam |
 | **Wachtwoord** | Ja | Je Magister-wachtwoord |
@@ -145,7 +151,7 @@ Als je wél de base32-sleutel hebt, vul die in bij **TOTP-geheim** en logt de in
 Wanneer het access token verloopt (typisch na ~1 uur), probeert de integratie automatisch opnieuw in te loggen via drie stappen:
 
 | Stap | Methode | Vereiste |
-|------|---------|----------|
+| ---- | ------- | -------- |
 | 1 | **Silent re-auth** — hergebruikt de bestaande serversessie om direct een nieuw token op te halen, zonder challenges of MFA | Serversessie nog actief (typisch 4–24 uur na laatste login) |
 | 2 | **Volledige challenge flow** — doorloopt username → wachtwoord → TOTP automatisch | Vereist een opgeslagen **TOTP-geheim** |
 | 3 | **Handmatige re-auth** — HA toont de melding *"Opnieuw authenticeren vereist"* | Alleen als stap 1 én 2 falen |
@@ -177,7 +183,7 @@ Bij een **leerlingaccount** worden entiteiten aangemaakt voor de ingelogde leerl
 ## Meegeleverde bestanden
 
 | Bestand | Beschrijving |
-|---------|-------------|
+| ------- | ----------- |
 | `custom_components/magister_custom/` | De integratie zelf |
 | `lovelace_dashboard.yaml` | Kant-en-klaar Lovelace dashboard |
 | `ha-automations/magister_notifications.yaml` | Notificatie-automatiseringen |
@@ -191,7 +197,7 @@ De automatiseringen staan kant-en-klaar in `ha-automations/magister_notification
 ### Beschikbare automatiseringen
 
 | Automatisering | Trigger | Beschrijving |
-|---|---|---|
+| -------------- | ------- | ------------ |
 | **Nieuw cijfer** | State change grades sensor | Melding met cijfer, vak, weging en omschrijving. Groen 🟢 bij voldoende, rood 🔴 bij onvoldoende. |
 | **Uitval in roosterwijzigingen** | State change schedule_changes sensor | Melding wanneer een wijziging "uitval" bevat in vak of omschrijving. |
 | **Ochtendscheck uitval 08:00** | Tijdtrigger 08:00 | Controleert of een les vanaf 08:30 als uitgevallen is gemarkeerd (`uitval_vandaag` attribuut). |
@@ -217,7 +223,7 @@ Of plak de inhoud rechtstreeks in je bestaande `automations.yaml`.
 Het bestand `lovelace_dashboard.yaml` bevat een kant-en-klaar dashboard met de volgende kaarten:
 
 | Kaart | Inhoud |
-|-------|--------|
+| ----- | ------ |
 | **Vandaag** | Lessen, huiswerkaantal, wijzigingen, laatste cijfer |
 | **Volgende les** | Vak, locatie, tijdstip |
 | **Aankomende toetsen / SO / MO** | Toetsen, proefwerken, schoolexamens en mondelingen de komende 7 dagen met 📝/📋/🎓/🎤 icoon per type |
