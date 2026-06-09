@@ -2,6 +2,17 @@
 
 ## Changelog
 
+### v1.0.12
+
+- Het TOTP-veld accepteert nu ook een volledige `otpauth://totp/...`-URI — de integratie extraheert het base32-geheim er automatisch uit. Gebruikers hoeven niet meer zelf het geheim op te zoeken; ze kunnen de exportfunctie van hun authenticator-app gebruiken en de URI plakken.
+- Config flow beschrijvingen bijgewerkt met uitleg over waar het TOTP-geheim te vinden is en welke formaten worden geaccepteerd
+- Tip toegevoegd in de MFA-stap om de URI meteen op te slaan voor automatische verlenging
+
+### v1.0.11
+
+- Bij een verlopen sessie zonder opgeslagen TOTP-geheim toont de integratie nu een persistente HA-melding met duidelijke instructies: de directe fix (6-cijferige code invoeren via de herverificatieprompt) én de permanente fix (base32 TOTP-geheim opslaan in de integratie-instellingen)
+- De melding verdwijnt automatisch zodra herverificatie succesvol is (na silent re-auth of volledige challenge flow)
+
 ### v1.0.10
 
 - Token-vernieuwing werkt nu betrouwbaar: de authenticatie-sessie wordt altijd opnieuw aangemaakt vóór een silent re-auth poging, zodat overgebleven cookies van een eerdere challenge-flow niet kunnen interfereren
@@ -102,7 +113,7 @@ Werkt met **ouder- én leerlingaccounts** en ondersteunt **MFA (tweestapsverific
 
 Kopieer de map `magister_custom` naar je Home Assistant configuratiemap:
 
-```
+```text
 /config/custom_components/magister_custom/
 ├── __init__.py
 ├── auth.py
@@ -166,7 +177,7 @@ Wanneer het access token verloopt (typisch na ~1 uur), probeert de integratie au
 
 Na de installatie worden voor **elke leerling** de volgende entiteiten aangemaakt (waarbij `<naam>` de voor- en achternaam is):
 
-```
+```text
 sensor.magister_<naam>
 sensor.magister_<naam>_next_appointment
 sensor.magister_<naam>_grades

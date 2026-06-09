@@ -18,6 +18,8 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
+from homeassistant.components.persistent_notification import async_create as pn_create
+from homeassistant.components.persistent_notification import async_dismiss as pn_dismiss
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -298,6 +300,7 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
         silent_session = self._get_auth_session()
         if await self._client.try_silent_reauthenticate(silent_session):
             _LOGGER.debug("Silent re-auth succeeded – token renewed without MFA")
+            pn_dismiss(self.hass, f"{DOMAIN}_{self.entry.entry_id}_totp_required")
             return
 
         # -- Step 2: full challenge flow with another clean session --
@@ -307,11 +310,29 @@ class MagisterCoordinator(DataUpdateCoordinator[MagisterData]):
         try:
             await self._client.authenticate(full_session)
             _LOGGER.debug("Full re-auth succeeded")
+            pn_dismiss(self.hass, f"{DOMAIN}_{self.entry.entry_id}_totp_required")
         except MagisterTOTPRequired:
             _LOGGER.warning(
                 "Magister session fully expired and no TOTP secret stored. "
                 "Provide a base32 TOTP secret in the integration settings to "
                 "avoid manual re-authentication."
+            )
+            pn_create(
+                self.hass,
+                message=(
+                    "De Magister-sessie voor **%s** is verlopen en er is geen "
+                    "TOTP-geheim opgeslagen.\n\n"
+                    "**Nu oplossen:** klik op de herverificatiemelding die HA "
+                    "heeft aangemaakt en voer je 6-cijferige code in.\n\n"
+                    "**Permanent oplossen:** ga naar "
+                    "Instellingen → Integraties → Magister → Configureer "
+                    "en voer je **base32 TOTP-geheim** in (het geheim dat je "
+                    "scande bij het instellen van 2FA in Magister, niet de "
+                    "6-cijferige code). Dan kan de integratie zichzelf "
+                    "automatisch vernieuwen."
+                ) % self.entry.data.get(CONF_SCHOOL, ""),
+                title="Magister — herverificatie vereist",
+                notification_id=f"{DOMAIN}_{self.entry.entry_id}_totp_required",
             )
             self.entry.async_start_reauth(self.hass)
             raise UpdateFailed(

@@ -39,6 +39,24 @@ _DEFAULT_AUTHCODE = "00000000000000000000000000000000"
 # TOTP helpers
 # ---------------------------------------------------------------------------
 
+def normalize_totp_secret(raw: str) -> str:
+    """Return a bare base32 secret from either a raw secret or an otpauth:// URI.
+
+    Authenticator apps can export accounts as an otpauth:// URI, e.g.:
+        otpauth://totp/Magister:user@school?secret=ABCD1234&issuer=Magister
+    This function extracts the secret from such a URI so the user can paste
+    the full URI without manually hunting for the base32 string.
+    """
+    raw = raw.strip()
+    if raw.lower().startswith("otpauth://"):
+        parsed = urllib.parse.urlparse(raw)
+        params = urllib.parse.parse_qs(parsed.query)
+        secret = (params.get("secret") or [""])[0].strip()
+        if secret:
+            return secret
+    return raw
+
+
 def _generate_totp(secret: str, digits: int = 6, period: int = 30, offset: int = 0) -> str:
     """Generate a TOTP OTP from a base32-encoded secret (RFC 6238 / HOTP).
 

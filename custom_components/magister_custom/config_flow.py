@@ -11,7 +11,7 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import callback
 
-from .auth import MagisterAuthError, MagisterClient, MagisterTOTPFailed, MagisterTOTPRequired
+from .auth import MagisterAuthError, MagisterClient, MagisterTOTPFailed, MagisterTOTPRequired, normalize_totp_secret
 from .const import CONF_ACCESS_TOKEN, CONF_PASSWORD, CONF_SCHOOL, CONF_TOTP_SECRET, CONF_USERNAME, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ class MagisterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             school = _sanitize_school(user_input[CONF_SCHOOL])
             username = user_input[CONF_USERNAME].strip()
             password = user_input[CONF_PASSWORD]
-            totp_secret = (user_input.get(CONF_TOTP_SECRET) or "").strip() or None
+            totp_secret = normalize_totp_secret(user_input.get(CONF_TOTP_SECRET) or "") or None
 
             try:
                 client = await _do_auth(school, username, password, totp_secret)
@@ -186,11 +186,11 @@ class MagisterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             new_password = user_input[CONF_PASSWORD]
-            totp_secret = (
+            totp_secret = normalize_totp_secret(
                 user_input.get(CONF_TOTP_SECRET)
                 or entry.data.get(CONF_TOTP_SECRET)
                 or ""
-            ).strip() or None
+            ) or None
             mfa_code = (user_input.get(CONF_MFA_CODE) or "").strip() or None
 
             try:
