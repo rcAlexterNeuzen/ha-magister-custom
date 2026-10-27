@@ -38,7 +38,6 @@ def _sanitize_school(raw: str) -> str:
     s = s.replace(" ", "")
     return s
 
-
 async def _do_auth(
     school: str,
     username: str,
@@ -50,26 +49,73 @@ async def _do_auth(
 
     Returns the authenticated client so callers can store the access token.
     """
+    _LOGGER.debug(
+        "_do_auth starting: school=%s username=%s totp_secret=%s one_time_code=%s",
+        school,
+        username,
+        bool(totp_secret),
+        bool(one_time_code),
+    )
+
     client = MagisterClient(
         school=school,
         username=username,
         password=password,
         totp_secret=totp_secret or None,
     )
+
     try:
         async with aiohttp.ClientSession() as session:
-            await client.authenticate(session, one_time_code=one_time_code)
-    except MagisterTOTPRequired:
-        raise ValueError("totp_required")
-    except MagisterTOTPFailed:
-        raise ValueError("totp_failed")
-    except MagisterAuthError:
-        raise ValueError("invalid_auth")
-    except (aiohttp.ClientError, OSError):
-        raise ValueError("cannot_connect")
-    except Exception as err:
-        _LOGGER.debug("Unexpected error in _do_auth: %s", err)
+            _LOGGER.debug("Calling MagisterClient.authenticate()")
+
+            await client.authenticate(
+                session,
+                one_time_code=one_time_code,
+            )
+
+            _LOGGER.debug("MagisterClient.authenticate() completed successfully")
+
+    except MagisterTOTPRequired as err:
+        _LOGGER.warning(
+            "Magister authentication requires TOTP: %s: %s",
+            type(err).__name__,
+            err,
+        )
+        raise ValueError("totp_required") from err
+
+    except MagisterTOTPFailed as err:
+        _LOGGER.warning(
+            "Magister TOTP authentication failed: %s: %s",
+            type(err).__name__,
+            err,
+        )
+        raise ValueError("totp_failed") from err
+
+    except MagisterAuthError as err:
+        _LOGGER.warning(
+            "Magister authentication failed: %s: %s",
+            type(err).__name__,
+            err,
+        )
+        raise ValueError("invalid_auth") from err
+
+    except (aiohttp.ClientError, OSError) as err:
+        _LOGGER.warning(
+            "Connection error during Magister authentication: %s: %s",
+            type(err).__name__,
+            err,
+        )
         raise ValueError("cannot_connect") from err
+
+    except Exception as err:
+        _LOGGER.exception(
+            "Unexpected exception during Magister authentication: type=%s error=%r",
+            type(err).__name__,
+            err,
+        )
+        raise ValueError("cannot_connect") from err
+
+    _LOGGER.debug("_do_auth returning authenticated MagisterClient")
     return client
 
 
