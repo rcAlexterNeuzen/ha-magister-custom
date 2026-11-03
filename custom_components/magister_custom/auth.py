@@ -478,67 +478,210 @@ class MagisterClient:
         accounts_url: str,
         one_time_code: str | None = None,
     ) -> dict:
-        """Submit TOTP / soft-token challenge and return the response.
+        """Submit TOTP or soft-token challenge and return the response.
 
         Priority:
-          1. `one_time_code` – a fresh 6-digit code entered by the user right now
-          2. `self.totp_secret` – base32 seed for automatic TOTP generation
+          1. one_time_code: fresh six-digit code supplied by the user
+          2. self.totp_secret: base32 seed for automatic TOTP generation
         """
         if action == "softtoken":
-            field, endpoint = "code", "soft-token"
+            field = "code"
+            endpoint = "soft-token"
         else:
-            field, endpoint = "otp", action  # "totp"
+            field = "otp"
+            endpoint = action
 
-        # --- path 1: user supplied a live 6-digit code ---
+        _LOGGER.debug(
+            "[Magister auth] MFA challenge: action=%r endpoint=%r field=%r "
+            "one_time_code_present=%s totp_secret_present=%s",
+            action,
+            endpoint,
+            field,
+            bool(one_time_code),
+            bool(self.totp_secret),
+        )
+
         if one_time_code:
             code = one_time_code.strip().replace(" ", "")
+
             _LOGGER.debug(
-                "[Magister auth] submitting one-time code for %s challenge", action
+                "[Magister auth] submitting one-time code: "
+                "action=%r endpoint=%r code_length=%d code_numeric=%s",
+                action,
+                endpoint,
+                len(code),
+                code.isdigit(),
             )
+
+            if len(code) != 6 or not code.isdigit():
+                raise MagisterTOTPFailed(
+                    "The one-time code must contain exactly six digits"
+                )
+
             r = await self._post_json(
                 session,
                 f"{accounts_url}/challenges/{endpoint}",
                 {**payload, field: code},
                 headers,
             )
-            if r.get("redirectURL") and not r.get("error"):
-                return r
-            raise MagisterTOTPFailed(
-                f"One-time code rejected by Magister (action={action}): "
-                f"{r.get('error', 'no redirectURL')}. "
-                "Make sure you enter the code immediately before it rotates (every 30 s)."
+
+            _LOGGER.warning(
+                "[Magister auth] MFA result: "
+                "action=%r redirectURL_present=%s error=%r "
+                "expiresIn=%r reAuthenticate=%r "
+                "username_present=%s externalIdPs_count=%d",
+                r.get("action"),
+                bool(r.get("redirectURL")),
+                r.get("error"),
+                r.get("expiresIn"),
+                r.get("reAuthenticate"),
+                bool(r.get("username")),
+                len(r.get("externalIdPs") or []),
             )
 
-        # --- path 2: compute TOTP from stored secret ---
+            _LOGGER.debug(
+                "[Magister auth] MFA response: keys=%s "
+                "redirectURL_present=%s action=%r error=%r message=%r",
+                sorted(r.keys()),
+                bool(r.get("redirectURL")),
+                r.get("action"),
+                r.get("error"),
+                r.get("message"),
+            )
+
+            if r.get("error"):
+                raise MagisterTOTPFailed(
+                    f"One-time code rejected by Magister: {r['error']}"
+                )
+
+            if r.get("redirectURL"):
+                _LOGGER.debug(
+                    "[Magister auth] one-time code accepted; redirect received"
+                )
+                return r
+
+            if r.get("action") == "pairfidopromo":
+                _LOGGER.debug(
+                    "[Magister auth] one-time code accepted; "
+                    "continuing with pairfidopromo"
+                )
+
+                r = await self._handle_pair_fido_promo(
+                    session,
+                    payload,
+                    headers,
+                    accounts_url,
+                )
+
+                if r.get("redirectURL") and not r.get("error"):
+                    return r
+
+                raise MagisterAuthError(
+                    "MFA succeeded, but pairfidopromo did not produce a redirect: "
+                    f"action={r.get('action')!r}, "
+                    f"error={r.get('error')!r}, "
+                    f"keys={sorted(r.keys())}"
+                )
+
+            response_reason = (
+                r.get("error")
+                or r.get("message")
+                or (
+                    f"no redirectURL; returned action={r.get('action')!r}; "
+                    f"response keys={sorted(r.keys())}"
+                )
+            )
+
+            raise MagisterTOTPFailed(
+                f"One-time code was not accepted by the Magister flow "
+                f"(action={action}, endpoint={endpoint}): {response_reason}"
+            )
+
         if not self.totp_secret:
             raise MagisterTOTPRequired(
-                f"2FA ({action}) is required but no TOTP secret or one-time code was provided"
+                f"2FA ({action}) is required but no TOTP secret or "
+                "one-time code was provided"
             )
 
-        # Try current period first, then ±1 period to tolerate minor clock skew
-        last_error: str = "no redirectURL"
+        last_error = "no redirectURL"
+
         for drift in (0, -1, 1):
             otp = _generate_totp(self.totp_secret, offset=drift)
-            otp_payload = {**payload, field: otp}
+
             _LOGGER.debug(
-                "[Magister auth] trying %s challenge with drift=%d code=%s",
-                action, drift, otp,
+                "[Magister auth] trying generated code: "
+                "action=%r endpoint=%r drift=%d",
+                action,
+                endpoint,
+                drift,
             )
+
             r = await self._post_json(
-                session, f"{accounts_url}/challenges/{endpoint}", otp_payload, headers
+                session,
+                f"{accounts_url}/challenges/{endpoint}",
+                {**payload, field: otp},
+                headers,
             )
-            if r.get("redirectURL") and not r.get("error"):
-                _LOGGER.debug("[Magister auth] %s succeeded with drift=%d", action, drift)
-                return r
-            last_error = r.get("error") or "no redirectURL"
+
             _LOGGER.debug(
-                "[Magister auth] %s drift=%d failed: %s", action, drift, last_error
+                "[Magister auth] generated-code response: "
+                "drift=%d keys=%s redirectURL_present=%s "
+                "action=%r error=%r message=%r",
+                drift,
+                sorted(r.keys()),
+                bool(r.get("redirectURL")),
+                r.get("action"),
+                r.get("error"),
+                r.get("message"),
+            )
+
+            if r.get("redirectURL") and not r.get("error"):
+                return r
+
+            last_error = (
+                r.get("error")
+                or r.get("message")
+                or f"no redirectURL; response keys={sorted(r.keys())}"
             )
 
         raise MagisterTOTPFailed(
-            f"2FA challenge failed (action={action}) after trying ±1 period: {last_error}. "
-            "Check your TOTP secret (base32 seed from app setup, not the 6-digit code)."
+            f"2FA challenge failed (action={action}) after trying "
+            f"the current, previous, and next TOTP periods: {last_error}"
         )
+
+    async def _handle_pair_fido_promo(
+        self,
+        session: aiohttp.ClientSession,
+        payload: dict,
+        headers: dict,
+        accounts_url: str,
+    ) -> dict:
+        """Skip the optional FIDO pairing promotion."""
+
+        endpoint = f"{accounts_url}/challenges/current"
+
+        _LOGGER.debug(
+            "[Magister auth] handling pairfidopromo using endpoint=%s",
+            endpoint,
+        )
+
+        result = await self._post_json(
+            session,
+            endpoint,
+            payload,
+            headers,
+        )
+
+        _LOGGER.debug(
+            "[Magister auth] pairfidopromo response: "
+            "keys=%s action=%r redirectURL_present=%s error=%r",
+            sorted(result.keys()),
+            result.get("action"),
+            bool(result.get("redirectURL")),
+            result.get("error"),
+        )
+
+        return result
 
     async def _extract_token(
         self, session: aiohttp.ClientSession, url: str
@@ -613,13 +756,88 @@ class MagisterClient:
         data: dict,
         extra_headers: dict | None = None,
     ) -> dict:
-        headers: dict[str, str] = {"Content-Type": "application/json"}
+    
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+    
         if extra_headers:
             headers.update(extra_headers)
-        async with session.post(url, json=data, headers=headers) as resp:
-            try:
-                result = await resp.json(content_type=None)
-                return result if isinstance(result, dict) else {}
-            except Exception:
+
+        # Do not log data because it may contain the password or MFA code.
+        _LOGGER.debug(
+            "[Magister auth] POST %s payload_keys=%s xsrf_header_present=%s",
+            url,
+            sorted(data.keys()),
+            bool(headers.get("X-XSRF-TOKEN")),
+        )
+
+        async with session.post(
+            url,
+            json=data,
+            headers=headers,
+            allow_redirects=False,
+        ) as resp:
+            body = await resp.text()
+
+            _LOGGER.debug(
+                "[Magister auth] POST response: url=%s status=%d "
+                "content_type=%r location_present=%s body_length=%d",
+                url,
+                resp.status,
+                resp.headers.get("Content-Type"),
+                bool(resp.headers.get("Location")),
+                len(body),
+            )
+
+            if resp.status >= 400:
+                _LOGGER.warning(
+                    "[Magister auth] POST failed: url=%s status=%d "
+                    "body_preview=%r",
+                    url,
+                    resp.status,
+                    body[:300],
+                )
+
+                try:
+                    error_result = json.loads(body)
+                except json.JSONDecodeError:
+                    resp.raise_for_status()
+
+                if isinstance(error_result, dict):
+                    error_result["_http_status"] = resp.status
+                    return error_result
+
                 resp.raise_for_status()
+
+            if not body.strip():
+                _LOGGER.warning(
+                    "[Magister auth] POST returned an empty response: "
+                    "url=%s status=%d",
+                    url,
+                    resp.status,
+                )
                 return {}
+
+            try:
+                result = json.loads(body)
+            except json.JSONDecodeError:
+                _LOGGER.warning(
+                    "[Magister auth] POST returned non-JSON data: "
+                    "url=%s status=%d body_preview=%r",
+                    url,
+                    resp.status,
+                    body[:300],
+                )
+                return {}
+
+            if not isinstance(result, dict):
+                _LOGGER.warning(
+                    "[Magister auth] POST returned JSON type %s instead of object",
+                    type(result).__name__,
+                )
+                return {}
+
+            return result
+
